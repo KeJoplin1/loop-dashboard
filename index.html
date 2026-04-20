@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Loop Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --surface2: #f1f0ec;
+    --border: rgba(0,0,0,0.1);
+    --text: #1a1a18;
+    --text2: #5f5e5a;
+    --text3: #888780;
+    --green: #3B6D11;
+    --green-bg: #EAF3DE;
+    --red: #A32D2D;
+    --red-bg: #FCEBEB;
+    --amber: #854F0B;
+    --amber-bg: #FAEEDA;
+    --blue: #185FA5;
+    --blue-line: #378ADD;
+    --purple-line: #7F77DD;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18;
+      --surface: #242422;
+      --surface2: #2c2c2a;
+      --border: rgba(255,255,255,0.1);
+      --text: #f1f0ec;
+      --text2: #b4b2a9;
+      --text3: #888780;
+    }
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; min-height: 100vh; }
+  .app { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .topbar-left h1 { font-size: 20px; font-weight: 600; color: var(--text); }
+  .topbar-left p { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .upload-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; }
+  .upload-btn:hover { opacity: 0.9; }
+  #fileInput { display: none; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); }
+  .status-dot.live { background: #639922; }
+  .status-text { font-size: 12px; color: var(--text3); }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .metric { background: var(--surface2); border-radius: var(--radius-sm); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .metric-val { font-size: 26px; font-weight: 600; color: var(--text); line-height: 1; }
+  .metric-val .unit { font-size: 13px; font-weight: 400; color: var(--text3); }
+  .metric-val.good { color: var(--green); }
+  .metric-val.warn { color: var(--amber); }
+  .metric-val.bad { color: var(--red); }
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+  .card-title { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
+  .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .tir-bar-wrap { display: flex; height: 16px; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+  .tir-seg { height: 100%; transition: width 0.5s ease; }
+  .tir-labels { display: flex; gap: 16px; font-size: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tir-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+  .tir-readings { font-size: 11px; color: var(--text3); }
+  .bolus-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+  .bolus-row:last-child { border-bottom: none; }
+  .bolus-time { color: var(--text3); min-width: 52px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .bolus-badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .bolus-badge.auto { background: var(--surface2); color: var(--text3); }
+  .bolus-badge.manual { background: #E6F1FB; color: #185FA5; }
+  .bolus-units { font-weight: 600; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .empty { padding: 2rem; text-align: center; color: var(--text3); font-size: 13px; }
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 3rem 2rem; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .upload-zone:hover { border-color: var(--blue); }
+  .upload-zone h3 { font-size: 16px; font-weight: 500; margin-bottom: 8px; color: var(--text); }
+  .upload-zone p { font-size: 13px; color: var(--text3); }
+  .upload-zone .hint { font-size: 12px; color: var(--text3); margin-top: 12px; background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 12px; display: inline-block; }
+  #dashboard { display: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>Loop dashboard</h1>
+      <p id="data-range">No data loaded</p>
+    </div>
+    <div class="topbar-right">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">No data</span>
+      <label class="upload-btn" for="fileInput">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 4l4-3 4 3M2 12h12v2H2z" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Upload CSV
+      </label>
+      <input type="file" id="fileInput" accept=".csv" onchange="handleFile(event)" />
+    </div>
+  </div>
+
+  <div id="upload-prompt">
+    <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+      <h3>Upload your loop_data.csv</h3>
+      <p>Run tidepool_sync.py on your Windows PC, then upload the CSV here</p>
+      <span class="hint">C:\TidepoolDashboard\loop_data.csv</span>
+    </div>
+  </div>
+
+  <div id="dashboard">
+    <div class="metrics" id="metrics-row"></div>
+
+    <div class="card">
+      <div class="card-title">Glucose (mg/dL)</div>
+      <div style="position:relative;width:100%;height:220px;">
+        <canvas id="glucChart" role="img" aria-label="Glucose trace over selected period"></canvas>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Time in range</div>
+        <div id="tir-display"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Basal rate (u/hr)</div>
+        <div style="position:relative;width:100%;height:150px;">
+          <canvas id="basalChart" role="img" aria-label="Automated basal rate over time"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Recent boluses</div>
+        <div id="bolus-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Insulin summary</div>
+        <div id="insulin-summary"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let glucChart = null;
+let basalChart = null;
+
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => parseAndRender(ev.target.result);
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (vals[i] || '').trim());
+    return obj;
+  });
+}
+
+function parseAndRender(csvText) {
+  const rows = parseCSV(csvText);
+
+  const cgm = rows.filter(r => r.type === 'cgm' && r.glucose_mgdl !== '')
+    .map(r => ({ t: new Date(r.timestamp), v: parseFloat(r.glucose_mgdl) }))
+    .filter(r => !isNaN(r.v))
+    .sort((a, b) => a.t - b.t);
+
+  const boluses = rows.filter(r => r.type === 'bolus' && r.bolus_units !== '')
+    .map(r => ({ t: new Date(r.timestamp), units: parseFloat(r.bolus_units) || 0, auto: false }))
+    .sort((a, b) => b.t - a.t);
+
+  const basals = rows.filter(r => r.type === 'basal' && r.basal_rate !== '')
+    .map(r => ({ t: new Date(r.timestamp), rate: parseFloat(r.basal_rate) || 0, delivered: parseFloat(r.basal_delivered) || 0 }))
+    .sort((a, b) => a.t - b.t);
+
+  if (!cgm.length) { alert('No CGM data found in CSV. Check the file format.'); return; }
+
+  const minT = cgm[0].t;
+  const maxT = cgm[cgm.length - 1].t;
+  document.getElementById('data-range').textContent =
+    minT.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' +
+    minT.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ' — ' +
+    maxT.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' +
+    maxT.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+  document.getElementById('status-dot').className = 'status-dot live';
+  document.getElementById('status-text').textContent = 'Data loaded · ' + rows.length + ' records';
+  document.getElementById('upload-prompt').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+
+  renderMetrics(cgm, boluses, basals);
+  renderGlucoseChart(cgm);
+  renderTIR(cgm);
+  renderBasalChart(basals);
+  renderBolusList(boluses);
+  renderInsulinSummary(boluses, basals);
+}
+
+function renderMetrics(cgm, boluses, basals) {
+  const vals = cgm.map(d => d.v);
+  const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  const inRange = vals.filter(v=>v>=70&&v<=180).length;
+  const tir = Math.round(inRange/vals.length*100);
+  const latest = vals[vals.length-1];
+  const latestClass = latest < 70 ? 'bad' : latest > 180 ? 'warn' : 'good';
+
+  const manualBolus = boluses.reduce((s,b)=>s+b.units,0);
+  const basalDel = basals.reduce((s,b)=>s+b.delivered,0);
+  const tdd = Math.round((manualBolus + basalDel) * 10) / 10;
+  const tddKg = Math.round(tdd / 82 * 10) / 10;
+
+  const eGDR = Math.round((21.158 - (0.09 * 0) - (0.14 * (latest > 180 ? 8 : 6))) * 10) / 10;
+
+  document.getElementById('metrics-row').innerHTML = `
+    <div class="metric"><div class="metric-label">Current</div><div class="metric-val ${latestClass}">${latest} <span class="unit">mg/dL</span></div></div>
+    <div class="metric"><div class="metric-label">Average</div><div class="metric-val">${avg} <span class="unit">mg/dL</span></div></div>
+    <div class="metric"><div class="metric-label">TIR</div><div class="metric-val ${tir>=70?'good':tir>=50?'warn':'bad'}">${tir}<span class="unit">%</span></div></div>
+    <div class="metric"><div class="metric-label">TDD</div><div class="metric-val">${tdd} <span class="unit">u</span></div></div>
+    <div class="metric"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg} <span class="unit">u/kg</span></div></div>
+    <div class="metric"><div class="metric-label">Readings</div><div class="metric-val">${vals.length} <span class="unit">pts</span></div></div>
+  `;
+}
+
+function renderGlucoseChart(cgm) {
+  if (glucChart) glucChart.destroy();
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const tickColor = isDark ? '#888780' : '#888780';
+
+  glucChart = new Chart(document.getElementById('glucChart'), {
+    type: 'line',
+    data: {
+      labels: cgm.map(d => d.t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})),
+      datasets: [{
+        data: cgm.map(d => d.v),
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.3,
+        fill: false,
+        segment: {
+          borderColor: ctx => {
+            const v = cgm[ctx.p1DataIndex]?.v;
+            return v < 70 ? '#E24B4A' : v > 180 ? '#EF9F27' : '#378ADD';
+          }
+        }
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' mg/dL' } }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 10, color: tickColor, font: { size: 10 } }, grid: { color: gridColor } },
+        y: {
+          min: 40, max: 300,
+          ticks: { color: tickColor, font: { size: 10 } },
+          grid: { color: gridColor }
+        }
+      }
+    }
+  });
+}
+
+function renderTIR(cgm) {
+  const vals = cgm.map(d => d.v);
+  const low = vals.filter(v=>v<70).length;
+  const inRange = vals.filter(v=>v>=70&&v<=180).length;
+  const high = vals.filter(v=>v>180).length;
+  const pLow = Math.round(low/vals.length*100);
+  const pIn = Math.round(inRange/vals.length*100);
+  const pHigh = Math.round(high/vals.length*100);
+  document.getElementById('tir-display').innerHTML = `
+    <div class="tir-bar-wrap">
+      <div class="tir-seg" style="width:${pLow}%;background:#E24B4A;"></div>
+      <div class="tir-seg" style="width:${pIn}%;background:#639922;"></div>
+      <div class="tir-seg" style="width:${pHigh}%;background:#EF9F27;"></div>
+    </div>
+    <div class="tir-labels">
+      <span><span class="tir-dot" style="background:#E24B4A;"></span><span style="color:#A32D2D;">Low ${pLow}%</span></span>
+      <span><span class="tir-dot" style="background:#639922;"></span><span style="color:#3B6D11;">In range ${pIn}%</span></span>
+      <span><span class="tir-dot" style="background:#EF9F27;"></span><span style="color:#854F0B;">High ${pHigh}%</span></span>
+    </div>
+    <div class="tir-readings">Target: 70–180 mg/dL · ${vals.length} readings</div>
+  `;
+}
+
+function renderBasalChart(basals) {
+  if (basalChart) basalChart.destroy();
+  if (!basals.length) return;
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
+  basalChart = new Chart(document.getElementById('basalChart'), {
+    type: 'line',
+    data: {
+      labels: basals.map(d => d.t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})),
+      datasets: [{
+        data: basals.map(d => d.rate),
+        borderColor: '#7F77DD',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        stepped: true,
+        fill: true,
+        backgroundColor: 'rgba(127,119,221,0.08)'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' u/hr' } } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6, color: '#888780', font: { size: 10 } }, grid: { color: gridColor } },
+        y: { min: 0, ticks: { color: '#888780', font: { size: 10 } }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+function renderBolusList(boluses) {
+  const recent = boluses.slice(0, 12);
+  if (!recent.length) { document.getElementById('bolus-list').innerHTML = '<div class="empty">No boluses in range</div>'; return; }
+  document.getElementById('bolus-list').innerHTML = recent.map(b => `
+    <div class="bolus-row">
+      <span class="bolus-time">${b.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+      <span class="bolus-badge manual">manual</span>
+      <span class="bolus-units">${Math.round(b.units*100)/100} u</span>
+    </div>
+  `).join('');
+}
+
+function renderInsulinSummary(boluses, basals) {
+  const totalBolus = Math.round(boluses.reduce((s,b)=>s+b.units,0)*10)/10;
+  const totalBasal = Math.round(basals.reduce((s,b)=>s+b.delivered,0)*10)/10;
+  const tdd = Math.round((totalBolus+totalBasal)*10)/10;
+  const pBolus = tdd > 0 ? Math.round(totalBolus/tdd*100) : 0;
+  const pBasal = tdd > 0 ? Math.round(totalBasal/tdd*100) : 0;
+
+  document.getElementById('insulin-summary').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Bolus</div>
+        <div style="font-size:20px;font-weight:600;">${totalBolus}<span style="font-size:12px;font-weight:400;color:var(--text3);"> u</span></div>
+        <div style="font-size:11px;color:var(--text3);">${pBolus}% of TDD</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Basal</div>
+        <div style="font-size:20px;font-weight:600;">${totalBasal}<span style="font-size:12px;font-weight:400;color:var(--text3);"> u</span></div>
+        <div style="font-size:11px;color:var(--text3);">${pBasal}% of TDD</div>
+      </div>
+    </div>
+    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;">
+      <div style="width:${pBolus}%;background:#378ADD;"></div>
+      <div style="width:${pBasal}%;background:#7F77DD;"></div>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--text3);">
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#378ADD;margin-right:4px;vertical-align:middle;"></span>Bolus</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#7F77DD;margin-right:4px;vertical-align:middle;"></span>Basal</span>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
