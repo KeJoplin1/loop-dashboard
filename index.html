@@ -44,13 +44,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
 .card-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
 .two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px}
-.tir-bar-wrap{display:flex;height:16px;border-radius:8px;overflow:hidden;margin-bottom:8px}
-.tir-seg{height:100%}
-.tir-labels{display:flex;gap:12px;font-size:12px;flex-wrap:wrap;margin-bottom:8px}
+.tir-bar-wrap{display:flex;height:36px;border-radius:10px;overflow:hidden;margin-bottom:12px;position:relative}
+.tir-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:rgba(255,255,255,0.95);overflow:hidden;white-space:nowrap}
 .tir-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
-.split-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:10px 0 6px}
-.split-labels{display:flex;gap:16px;font-size:11px;color:var(--text3)}
-.benchmark{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2)}
 .loading-state{text-align:center;padding:4rem 2rem;color:var(--text3)}
 .spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -119,7 +115,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div style="display:flex;gap:12px;margin-bottom:10px">
           <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
         </div>
-        <div style="position:relative;width:100%;height:160px">
+        <div style="position:relative;width:100%;height:180px">
           <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
         </div>
       </div>
@@ -127,31 +123,25 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="two-col">
       <div class="card">
-        <div class="card-title">Average glucose by hour of day</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyAvgChart" role="img" aria-label="Average glucose by hour"></canvas>
+        <div class="card-title">Average glucose by 3-hour block</div>
+        <div style="position:relative;width:100%;height:200px">
+          <canvas id="hourlyAvgChart" role="img" aria-label="Average glucose by 3-hour block"></canvas>
         </div>
       </div>
       <div class="card">
         <div class="card-title">Low events by hour of day (&lt;70 mg/dL)</div>
-        <div style="position:relative;width:100%;height:180px">
+        <div style="position:relative;width:100%;height:200px">
           <canvas id="hourlyLowChart" role="img" aria-label="Low events by hour"></canvas>
         </div>
       </div>
     </div>
 
-    <div class="two-col">
-      <div class="card">
-        <div class="card-title">Basal vs bolus split</div>
-        <div id="insulin-split"></div>
+    <div class="card">
+      <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
+      <div style="position:relative;width:100%;height:160px">
+        <canvas id="sensitivityChart" role="img" aria-label="TDD per kg trend"></canvas>
       </div>
-      <div class="card">
-        <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
-        <div style="position:relative;width:100%;height:150px">
-          <canvas id="sensitivityChart" role="img" aria-label="TDD per kg trend"></canvas>
-        </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = better sensitivity</div>
-      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
     </div>
 
   </div>
@@ -164,6 +154,11 @@ let allCGM=[],allBoluses=[],allBasals=[];
 let filteredCGM=[],filteredBoluses=[],filteredBasals=[];
 let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null;
 let currentDays=7;
+
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function fmtDate(t){return DAYS[t.getDay()]+' '+t.toLocaleDateString([],{month:'short',day:'numeric'});}
+function fmtDateTime(t){return fmtDate(t)+' '+t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
+function dayKey(t){return fmtDate(t);}
 
 async function loadFromOneDrive(){
   showLoading();
@@ -240,8 +235,6 @@ function filterByDays(arr,days){
   return arr.filter(d=>d.t>=cutoff);
 }
 
-function dayKey(t){return t.toLocaleDateString([],{month:'short',day:'numeric'});}
-
 function renderAll(){
   filteredCGM=filterByDays(allCGM,currentDays);
   filteredBoluses=filterByDays(allBoluses,currentDays);
@@ -250,8 +243,8 @@ function renderAll(){
   document.getElementById('error-box').style.display='none';
   const minT=filteredCGM[0].t,maxT=filteredCGM[filteredCGM.length-1].t;
   document.getElementById('data-range').textContent=
-    minT.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' — '+
-    maxT.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+
+    fmtDate(minT)+' '+minT.toLocaleDateString([],{year:'numeric'})+' — '+
+    fmtDate(maxT)+' '+maxT.toLocaleDateString([],{year:'numeric'})+
     ' · '+filteredCGM.length+' readings';
   renderMetrics(filteredCGM,filteredBoluses,filteredBasals);
   renderGlucoseChart(filteredCGM);
@@ -259,7 +252,6 @@ function renderAll(){
   renderTDDChart(filteredBoluses,filteredBasals);
   renderHourlyAvg(filteredCGM);
   renderHourlyLows(filteredCGM);
-  renderInsulinSplit(filteredBoluses,filteredBasals);
   renderSensitivityChart(filteredBoluses,filteredBasals);
 }
 
@@ -294,8 +286,6 @@ function renderMetrics(cgm,boluses,basals){
   });
   const dailyTDDs=Object.values(dayMap).map(d=>d.bolus+d.basal);
   const{arrow,cls}=trendArrow(dailyTDDs);
-  const lowCount=vals.filter(v=>v<LOW).length;
-  const highCount=vals.filter(v=>v>HIGH).length;
   document.getElementById('metrics-row').innerHTML=`
     <div class="metric"><div class="metric-label">Average BG</div><div class="metric-val">${avg}<span class="unit"> mg/dL</span></div></div>
     <div class="metric"><div class="metric-label">GMI</div><div class="metric-val ${gmi<7?'good':gmi<8?'warn':'bad'}">${gmi}<span class="unit">%</span></div></div>
@@ -304,7 +294,6 @@ function renderMetrics(cgm,boluses,basals){
     <div class="metric"><div class="metric-label">CV</div><div class="metric-val ${cv<=36?'good':'warn'}">${cv}<span class="unit">%</span></div></div>
     <div class="metric"><div class="metric-label">Avg TDD <span class="${cls}">${arrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
     <div class="metric"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-    <div class="metric"><div class="metric-label">Lows / Highs</div><div class="metric-val"><span style="color:#A32D2D">${lowCount}</span><span class="unit"> / </span><span style="color:#854F0B">${highCount}</span></div></div>
   `;
 }
 
@@ -338,7 +327,7 @@ function renderGlucoseChart(cgm){
   glucChart=new Chart(document.getElementById('glucChart'),{
     type:'line',
     data:{
-      labels:s.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),
+      labels:s.map(d=>fmtDateTime(d.t)),
       datasets
     },
     options:{
@@ -365,33 +354,38 @@ function renderTIR(cgm){
   const vHigh=vals.filter(v=>v>250).length;
   const pct=n=>Math.round(n/vals.length*100);
   const p=[pct(vLow),pct(low),pct(inR),pct(high),pct(vHigh)];
+  const minWidth=8;
+  function seg(pVal,bg,label){
+    const show=pVal>=minWidth;
+    return`<div class="tir-seg" style="width:${pVal}%;background:${bg};min-width:${pVal>0?'4px':'0'}">${show?pVal+'%':''}</div>`;
+  }
   document.getElementById('tir-display').innerHTML=`
     <div class="tir-bar-wrap">
-      <div class="tir-seg" style="width:${p[0]}%;background:#7f1d1d"></div>
-      <div class="tir-seg" style="width:${p[1]}%;background:#E24B4A"></div>
-      <div class="tir-seg" style="width:${p[2]}%;background:#639922"></div>
-      <div class="tir-seg" style="width:${p[3]}%;background:#EF9F27"></div>
-      <div class="tir-seg" style="width:${p[4]}%;background:#854F0B"></div>
+      ${seg(p[0],'#c81c1c','Very low')}
+      ${seg(p[1],'#E24B4A','Low')}
+      ${seg(p[2],'#4a9e1a','In range')}
+      ${seg(p[3],'#F0A500','High')}
+      ${seg(p[4],'#c47000','Very high')}
     </div>
     <div style="display:grid;gap:8px;margin-top:12px">
       <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#7f1d1d;margin-top:3px;flex-shrink:0"></span>
-        <div><div style="font-size:12px;font-weight:500;color:#7f1d1d">Very low ${p[0]}% <span style="font-weight:400;color:var(--text3)">· target &lt;1%</span></div><div style="font-size:11px;color:var(--text3)">&lt;54 mg/dL — serious hypoglycemia, seizure risk</div></div>
+        <span class="tir-dot" style="background:#c81c1c;margin-top:3px;flex-shrink:0"></span>
+        <div><div style="font-size:12px;font-weight:500;color:#c81c1c">Very low ${p[0]}% <span style="font-weight:400;color:var(--text3)">· target &lt;1%</span></div><div style="font-size:11px;color:var(--text3)">&lt;54 mg/dL — serious hypoglycemia, seizure risk</div></div>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
         <span class="tir-dot" style="background:#E24B4A;margin-top:3px;flex-shrink:0"></span>
         <div><div style="font-size:12px;font-weight:500;color:#A32D2D">Low ${p[1]}% <span style="font-weight:400;color:var(--text3)">· target &lt;4%</span></div><div style="font-size:11px;color:var(--text3)">54–69 mg/dL — symptomatic hypoglycemia</div></div>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#639922;margin-top:3px;flex-shrink:0"></span>
+        <span class="tir-dot" style="background:#4a9e1a;margin-top:3px;flex-shrink:0"></span>
         <div><div style="font-size:12px;font-weight:500;color:#3B6D11">In range ${p[2]}% <span style="font-weight:400;color:var(--text3)">· target &gt;70%</span></div><div style="font-size:11px;color:var(--text3)">70–150 mg/dL — your personal target range</div></div>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#EF9F27;margin-top:3px;flex-shrink:0"></span>
+        <span class="tir-dot" style="background:#F0A500;margin-top:3px;flex-shrink:0"></span>
         <div><div style="font-size:12px;font-weight:500;color:#854F0B">High ${p[3]}% <span style="font-weight:400;color:var(--text3)">· target &lt;25%</span></div><div style="font-size:11px;color:var(--text3)">150–250 mg/dL — hyperglycemia, long-term complication risk</div></div>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#854F0B;margin-top:3px;flex-shrink:0"></span>
+        <span class="tir-dot" style="background:#c47000;margin-top:3px;flex-shrink:0"></span>
         <div><div style="font-size:12px;font-weight:500;color:#633806">Very high ${p[4]}% <span style="font-weight:400;color:var(--text3)">· target &lt;5%</span></div><div style="font-size:11px;color:var(--text3)">&gt;250 mg/dL — significant hyperglycemia, DKA risk if sustained</div></div>
       </div>
     </div>
@@ -426,7 +420,16 @@ function renderTDDChart(boluses,basals){
     type:'bar',data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{footer:items=>{const t=items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0);return'TDD: '+Math.round(t*10)/10+' u';}}}},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{footer:items=>{
+          const t=items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0);
+          const tot=Math.round(t*10)/10;
+          const bolusPct=tot>0?Math.round(items.find(i=>i.dataset.label==='Bolus')?.parsed.y/tot*100||0):0;
+          const basalPct=100-bolusPct;
+          return`TDD: ${tot} u · Bolus ${bolusPct}% · Basal ${basalPct}%`;
+        }}}
+      },
       scales:{
         x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},
         y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}
@@ -435,25 +438,56 @@ function renderTDDChart(boluses,basals){
   });
 }
 
+function blockLabel(i){
+  const h=i*3;
+  if(h===0) return'12a';
+  if(h<12) return h+'a';
+  if(h===12) return'12p';
+  return(h-12)+'p';
+}
+
 function renderHourlyAvg(cgm){
   if(hourlyAvgChart) hourlyAvgChart.destroy();
-  const hours=Array.from({length:24},()=>[]);
-  cgm.forEach(d=>hours[d.t.getHours()].push(d.v));
-  const avgs=hours.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
-  const colors=avgs.map(v=>v===null?'rgba(136,135,128,0.3)':v>HIGH?'rgba(239,159,39,0.8)':v<LOW?'rgba(226,75,74,0.8)':'rgba(99,153,34,0.8)');
-  const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
+  const blocks=Array.from({length:8},()=>[]);
+  cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
+  const avgs=blocks.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
+  const colors=avgs.map(v=>{
+    if(v===null) return'rgba(136,135,128,0.3)';
+    const dist=Math.abs(v-100);
+    if(dist<=10) return'rgba(74,158,26,0.85)';
+    if(dist<=20) return'rgba(99,153,34,0.75)';
+    if(dist<=35) return'rgba(240,165,0,0.8)';
+    return'rgba(226,75,74,0.85)';
+  });
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  const labelColor=isDark?'rgba(255,255,255,0.8)':'rgba(0,0,0,0.75)';
   hourlyAvgChart=new Chart(document.getElementById('hourlyAvgChart'),{
     type:'bar',
-    data:{labels,datasets:[{data:avgs,backgroundColor:colors,borderRadius:4}]},
+    data:{
+      labels:Array.from({length:8},(_,i)=>blockLabel(i)+' – '+blockLabel(i+1 < 8 ? i+1 : 0)),
+      datasets:[{
+        data:avgs,backgroundColor:colors,borderRadius:5,
+        datalabels:{display:true}
+      }]
+    },
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}}},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}},
+        datalabels:{
+          anchor:'end',align:'end',
+          color:labelColor,
+          font:{size:11,weight:'600'},
+          formatter:v=>v?v:''
+        }
+      },
       scales:{
         x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
-        y:{min:60,max:200,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
-      }
+        y:{min:60,max:170,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
+      },
+      layout:{padding:{top:20}}
     }
   });
 }
@@ -465,56 +499,32 @@ function renderHourlyLows(cgm){
   const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  const labelColor=isDark?'rgba(255,255,255,0.8)':'rgba(0,0,0,0.75)';
   hourlyLowChart=new Chart(document.getElementById('hourlyLowChart'),{
     type:'bar',
-    data:{labels,datasets:[{data:hours,backgroundColor:'rgba(226,75,74,0.75)',borderRadius:4}]},
+    data:{
+      labels,
+      datasets:[{data:hours,backgroundColor:'rgba(226,75,74,0.75)',borderRadius:4}]
+    },
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings below 70'}}},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings below 70'}},
+        datalabels:{
+          anchor:'end',align:'end',
+          color:labelColor,
+          font:{size:10,weight:'600'},
+          formatter:v=>v>0?v:''
+        }
+      },
       scales:{
         x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
         y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}
-      }
+      },
+      layout:{padding:{top:20}}
     }
   });
-}
-
-function renderInsulinSplit(boluses,basals){
-  const totalBolus=Math.round(boluses.reduce((s,b)=>s+b.units,0)*10)/10;
-  const totalBasal=Math.round(basals.reduce((s,b)=>s+b.delivered,0)*10)/10;
-  const tdd=totalBolus+totalBasal;
-  const pB=tdd>0?Math.round(totalBolus/tdd*100):0;
-  const pBas=tdd>0?Math.round(totalBasal/tdd*100):0;
-  const avgTDD=Math.round(tdd/currentDays*10)/10;
-  const avgTDDkg=Math.round(avgTDD/WEIGHT_KG*10)/10;
-  const splitStatus=pB>60?'Bolus-heavy — consider basal adjustment':pBas>60?'Basal-heavy — review basal rates':'Near optimal split';
-  const splitColor=pB>60||pBas>60?'#854F0B':'#3B6D11';
-  document.getElementById('insulin-split').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Bolus total</div>
-        <div style="font-size:20px;font-weight:600">${totalBolus}<span style="font-size:12px;font-weight:400;color:var(--text3)"> u</span></div>
-        <div style="font-size:11px;color:var(--text3)">${pB}% of TDD</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Basal total</div>
-        <div style="font-size:20px;font-weight:600">${totalBasal}<span style="font-size:12px;font-weight:400;color:var(--text3)"> u</span></div>
-        <div style="font-size:11px;color:var(--text3)">${pBas}% of TDD</div>
-      </div>
-    </div>
-    <div class="split-bar">
-      <div style="width:${pB}%;background:#378ADD"></div>
-      <div style="width:${pBas}%;background:#7F77DD"></div>
-    </div>
-    <div class="split-labels">
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#378ADD;margin-right:4px;vertical-align:middle"></span>Bolus ${pB}%</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#7F77DD;margin-right:4px;vertical-align:middle"></span>Basal ${pBas}%</span>
-    </div>
-    <div class="benchmark" style="border-left:3px solid ${splitColor};border-radius:0 var(--radius-sm) var(--radius-sm) 0">
-      <span style="font-size:11px;color:${splitColor}">${splitStatus}</span>
-    </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--text3)">Avg TDD: ${avgTDD} u/day · ${avgTDDkg} u/kg · ${currentDays} days</div>
-  `;
 }
 
 function renderSensitivityChart(boluses,basals){
@@ -525,8 +535,8 @@ function renderSensitivityChart(boluses,basals){
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
   const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*100)/100);
   const rolling7=tddKgData.map((_,i)=>{
-    const window=tddKgData.slice(Math.max(0,i-6),i+1);
-    return Math.round(window.reduce((a,b)=>a+b,0)/window.length*100)/100;
+    const w=tddKgData.slice(Math.max(0,i-6),i+1);
+    return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;
   });
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
