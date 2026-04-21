@@ -373,14 +373,29 @@ function renderTIR(cgm){
       <div class="tir-seg" style="width:${p[3]}%;background:#EF9F27"></div>
       <div class="tir-seg" style="width:${p[4]}%;background:#854F0B"></div>
     </div>
-    <div class="tir-labels">
-      <span><span class="tir-dot" style="background:#7f1d1d"></span><span style="color:#7f1d1d">Very low ${p[0]}%</span></span>
-      <span><span class="tir-dot" style="background:#E24B4A"></span><span style="color:#A32D2D">Low ${p[1]}%</span></span>
-      <span><span class="tir-dot" style="background:#639922"></span><span style="color:#3B6D11">In range ${p[2]}%</span></span>
-      <span><span class="tir-dot" style="background:#EF9F27"></span><span style="color:#854F0B">High ${p[3]}%</span></span>
-      <span><span class="tir-dot" style="background:#854F0B"></span><span style="color:#633806">Very high ${p[4]}%</span></span>
+    <div style="display:grid;gap:8px;margin-top:12px">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
+        <span class="tir-dot" style="background:#7f1d1d;margin-top:3px;flex-shrink:0"></span>
+        <div><div style="font-size:12px;font-weight:500;color:#7f1d1d">Very low ${p[0]}% <span style="font-weight:400;color:var(--text3)">· target &lt;1%</span></div><div style="font-size:11px;color:var(--text3)">&lt;54 mg/dL — serious hypoglycemia, seizure risk</div></div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
+        <span class="tir-dot" style="background:#E24B4A;margin-top:3px;flex-shrink:0"></span>
+        <div><div style="font-size:12px;font-weight:500;color:#A32D2D">Low ${p[1]}% <span style="font-weight:400;color:var(--text3)">· target &lt;4%</span></div><div style="font-size:11px;color:var(--text3)">54–69 mg/dL — symptomatic hypoglycemia</div></div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
+        <span class="tir-dot" style="background:#639922;margin-top:3px;flex-shrink:0"></span>
+        <div><div style="font-size:12px;font-weight:500;color:#3B6D11">In range ${p[2]}% <span style="font-weight:400;color:var(--text3)">· target &gt;70%</span></div><div style="font-size:11px;color:var(--text3)">70–150 mg/dL — your personal target range</div></div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
+        <span class="tir-dot" style="background:#EF9F27;margin-top:3px;flex-shrink:0"></span>
+        <div><div style="font-size:12px;font-weight:500;color:#854F0B">High ${p[3]}% <span style="font-weight:400;color:var(--text3)">· target &lt;25%</span></div><div style="font-size:11px;color:var(--text3)">150–250 mg/dL — hyperglycemia, long-term complication risk</div></div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
+        <span class="tir-dot" style="background:#854F0B;margin-top:3px;flex-shrink:0"></span>
+        <div><div style="font-size:12px;font-weight:500;color:#633806">Very high ${p[4]}% <span style="font-weight:400;color:var(--text3)">· target &lt;5%</span></div><div style="font-size:11px;color:var(--text3)">&gt;250 mg/dL — significant hyperglycemia, DKA risk if sustained</div></div>
+      </div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:8px">Target: 70–150 mg/dL · ${vals.length} readings</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px">${vals.length} readings · ${currentDays} days</div>
   `;
 }
 
