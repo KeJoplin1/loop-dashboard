@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Loop Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -52,8 +53,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @keyframes spin{to{transform:rotate(360deg)}}
 .error-state{background:#FCEBEB;border:0.5px solid #F09595;border-radius:var(--radius);padding:16px;color:var(--red);font-size:13px;margin-bottom:16px}
 .upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;cursor:pointer}
-.upload-zone h3{font-size:16px;font-weight:500;margin-bottom:8px}
-.upload-zone p{font-size:13px;color:var(--text3)}
+.btn.print{background:var(--surface2);color:var(--text)}
+@media print{
+  .topbar-right,.range-tabs{display:none!important}
+  .app{padding:8px}
+  .card{break-inside:avoid;margin-bottom:10px}
+  body{background:#fff!important;color:#000!important}
+}
 </style>
 </head>
 <body>
@@ -67,6 +73,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <span class="status-dot" id="status-dot"></span>
       <span style="font-size:12px;color:var(--text3)" id="status-text">Connecting...</span>
       <button class="btn" onclick="loadFromOneDrive()">Refresh</button>
+      <button class="btn print" onclick="window.print()">Export PDF</button>
       <label class="btn primary" for="fileInput">Upload CSV</label>
       <input type="file" id="fileInput" accept=".csv" onchange="handleFile(event)"/>
     </div>
@@ -327,7 +334,7 @@ function renderGlucoseChart(cgm){
   glucChart=new Chart(document.getElementById('glucChart'),{
     type:'line',
     data:{
-      labels:s.map(d=>fmtDateTime(d.t)),
+      labels:s.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),
       datasets
     },
     options:{
@@ -335,6 +342,7 @@ function renderGlucoseChart(cgm){
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
+        datalabels:{display:false},
         tooltip:{filter:item=>item.datasetIndex===0,callbacks:{label:ctx=>ctx.parsed.y+' mg/dL'}}
       },
       scales:{
@@ -422,6 +430,7 @@ function renderTDDChart(boluses,basals){
       responsive:true,maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
+        datalabels:{display:false},
         tooltip:{callbacks:{footer:items=>{
           const t=items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0);
           const tot=Math.round(t*10)/10;
@@ -437,6 +446,8 @@ function renderTDDChart(boluses,basals){
     }
   });
 }
+
+Chart.register(ChartDataLabels);
 
 function blockLabel(i){
   const h=i*3;
@@ -467,8 +478,7 @@ function renderHourlyAvg(cgm){
     data:{
       labels:Array.from({length:8},(_,i)=>blockLabel(i)+' – '+blockLabel(i+1 < 8 ? i+1 : 0)),
       datasets:[{
-        data:avgs,backgroundColor:colors,borderRadius:5,
-        datalabels:{display:true}
+        data:avgs,backgroundColor:colors,borderRadius:5
       }]
     },
     options:{
@@ -480,14 +490,14 @@ function renderHourlyAvg(cgm){
           anchor:'end',align:'end',
           color:labelColor,
           font:{size:11,weight:'600'},
-          formatter:v=>v?v:''
+          formatter:v=>v?v+' mg/dL':''
         }
       },
       scales:{
         x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
-        y:{min:60,max:170,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
+        y:{min:60,max:180,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
       },
-      layout:{padding:{top:20}}
+      layout:{padding:{top:28}}
     }
   });
 }
@@ -522,7 +532,7 @@ function renderHourlyLows(cgm){
         x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
         y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}
       },
-      layout:{padding:{top:20}}
+      layout:{padding:{top:24}}
     }
   });
 }
@@ -551,7 +561,7 @@ function renderSensitivityChart(boluses,basals){
     },
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.parsed.y+' u/kg'}}},
+      plugins:{legend:{display:false},datalabels:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.parsed.y+' u/kg'}}},
       scales:{
         x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},
         y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
