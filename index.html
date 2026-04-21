@@ -11,7 +11,7 @@
   --bg:#f7f7f5;--surface:#fff;--surface2:#f1f0ec;--border:rgba(0,0,0,0.1);
   --text:#1a1a18;--text2:#5f5e5a;--text3:#888780;
   --green:#3B6D11;--red:#A32D2D;--amber:#854F0B;--blue:#185FA5;
-  --blue-line:#378ADD;--purple-line:#7F77DD;--radius:10px;--radius-sm:6px;
+  --radius:10px;--radius-sm:6px;
 }
 @media(prefers-color-scheme:dark){:root{
   --bg:#1a1a18;--surface:#242422;--surface2:#2c2c2a;
@@ -31,7 +31,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .status-dot.live{background:#639922;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 .range-tabs{display:flex;gap:4px;background:var(--surface2);border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content}
-.range-tab{padding:6px 14px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:none}
+.range-tab{padding:6px 16px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:none}
 .range-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px}
 .metric{background:var(--surface2);border-radius:var(--radius-sm);padding:14px 16px}
@@ -50,16 +50,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tir-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
 .split-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:10px 0 6px}
 .split-labels{display:flex;gap:16px;font-size:11px;color:var(--text3)}
-.excursion-table{width:100%;border-collapse:collapse;font-size:13px}
-.excursion-table th{font-size:11px;font-weight:500;color:var(--text3);text-align:left;padding:6px 8px;border-bottom:0.5px solid var(--border)}
-.excursion-table td{padding:8px;border-bottom:0.5px solid var(--border);vertical-align:middle}
-.excursion-table tr:last-child td{border-bottom:none}
-.badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px}
-.badge-low{background:#FCEBEB;color:#A32D2D}
-.badge-high{background:#FAEEDA;color:#854F0B}
-.badge-good{background:#EAF3DE;color:#3B6D11}
-.sparkline-row{display:flex;gap:3px;align-items:flex-end;height:40px}
-.spark-bar{flex:1;border-radius:2px 2px 0 0;min-height:2px}
+.benchmark{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2)}
 .loading-state{text-align:center;padding:4rem 2rem;color:var(--text3)}
 .spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -67,13 +58,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;cursor:pointer}
 .upload-zone h3{font-size:16px;font-weight:500;margin-bottom:8px}
 .upload-zone p{font-size:13px;color:var(--text3)}
-.trend-up{color:var(--red)}
-.trend-down{color:var(--green)}
-.trend-flat{color:var(--text3)}
-.section-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
-.section-toggle .chevron{font-size:12px;color:var(--text3);transition:transform 0.2s}
-.section-toggle.collapsed .chevron{transform:rotate(-90deg)}
-.collapsible{overflow:hidden;transition:max-height 0.3s ease}
 </style>
 </head>
 <body>
@@ -99,7 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
   <div id="upload-zone-wrap" style="display:none">
     <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
-      <h3>Upload loop_data.csv</h3>
+      <h3>Upload loop_data_slim.csv</h3>
       <p>Download from OneDrive app then upload here</p>
     </div>
   </div>
@@ -109,20 +93,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <button class="range-tab active" onclick="setRange(7,this)">7d</button>
       <button class="range-tab" onclick="setRange(14,this)">14d</button>
       <button class="range-tab" onclick="setRange(30,this)">30d</button>
-      <button class="range-tab" onclick="setRange(90,this)">90d</button>
+      <button class="range-tab" onclick="setRange(60,this)">60d</button>
     </div>
 
     <div class="metrics" id="metrics-row"></div>
 
     <div class="card">
-      <div class="card-title">Glucose trace (mg/dL) — hover for values</div>
-      <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="show-excursions" onchange="renderAll()" checked> Show excursions
-        </label>
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="show-range-band" onchange="renderAll()" checked> Show target band
-        </label>
+      <div class="card-title">Glucose trace (mg/dL) — hover anywhere for values</div>
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
       </div>
       <div style="position:relative;width:100%;height:240px">
         <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
@@ -135,31 +115,28 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="tir-display"></div>
       </div>
       <div class="card">
-        <div class="card-title">Daily TIR sparkline</div>
-        <div id="tir-sparkline"></div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Each bar = one day. Green = in range, red = low, orange = high.</div>
+        <div class="card-title">Daily TDD trend</div>
+        <div style="display:flex;gap:12px;margin-bottom:10px">
+          <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
+        </div>
+        <div style="position:relative;width:100%;height:160px">
+          <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-title">Daily TDD trend</div>
-      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="show-trendline" onchange="renderAll()" checked> Show trend line
-        </label>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Average glucose by hour of day</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="hourlyAvgChart" role="img" aria-label="Average glucose by hour"></canvas>
+        </div>
       </div>
-      <div style="position:relative;width:100%;height:180px">
-        <canvas id="tddChart" role="img" aria-label="Daily TDD trend"></canvas>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="section-toggle" onclick="toggleSection('excursions-body',this)">
-        <div class="card-title" style="margin:0">Excursion log — highs &gt; 150 and lows &lt; 70 by day</div>
-        <span class="chevron">▼</span>
-      </div>
-      <div id="excursions-body" class="collapsible" style="margin-top:14px">
-        <div id="excursion-table"></div>
+      <div class="card">
+        <div class="card-title">Low events by hour of day (&lt;70 mg/dL)</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="hourlyLowChart" role="img" aria-label="Low events by hour"></canvas>
+        </div>
       </div>
     </div>
 
@@ -169,11 +146,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="insulin-split"></div>
       </div>
       <div class="card">
-        <div class="card-title">Insulin sensitivity trend (TDD/kg)</div>
+        <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
         <div style="position:relative;width:100%;height:150px">
           <canvas id="sensitivityChart" role="img" aria-label="TDD per kg trend"></canvas>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Lower TDD/kg = improving insulin sensitivity</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = better sensitivity</div>
       </div>
     </div>
 
@@ -184,7 +161,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 const ONEDRIVE_URL="https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL3gvYy9hYThiZTRkZjIxZTk5YTk1L0lRQ0dxcGszdTREQ1RiRnljem1rYVdmYUFTTHk5d3lnQ0pEa295eEI0R3VNcFE/root/content";
 const LOW=70,HIGH=150,WEIGHT_KG=81.6;
 let allCGM=[],allBoluses=[],allBasals=[];
-let glucChart=null,tddChart=null,sensitivityChart=null;
+let filteredCGM=[],filteredBoluses=[],filteredBasals=[];
+let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null;
 let currentDays=7;
 
 async function loadFromOneDrive(){
@@ -265,34 +243,34 @@ function filterByDays(arr,days){
 function dayKey(t){return t.toLocaleDateString([],{month:'short',day:'numeric'});}
 
 function renderAll(){
-  const cgm=filterByDays(allCGM,currentDays);
-  const boluses=filterByDays(allBoluses,currentDays);
-  const basals=filterByDays(allBasals,currentDays);
-  if(!cgm.length){showError('No data in selected range.');return;}
+  filteredCGM=filterByDays(allCGM,currentDays);
+  filteredBoluses=filterByDays(allBoluses,currentDays);
+  filteredBasals=filterByDays(allBasals,currentDays);
+  if(!filteredCGM.length){showError('No data in selected range.');return;}
   document.getElementById('error-box').style.display='none';
-  const minT=cgm[0].t,maxT=cgm[cgm.length-1].t;
+  const minT=filteredCGM[0].t,maxT=filteredCGM[filteredCGM.length-1].t;
   document.getElementById('data-range').textContent=
     minT.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+' — '+
     maxT.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'})+
-    ' · '+cgm.length+' readings';
-  renderMetrics(cgm,boluses,basals);
-  renderGlucoseChart(cgm);
-  renderTIR(cgm);
-  renderTIRSparkline(cgm);
-  renderTDDChart(boluses,basals);
-  renderExcursionTable(cgm);
-  renderInsulinSplit(boluses,basals);
-  renderSensitivityChart(boluses,basals);
+    ' · '+filteredCGM.length+' readings';
+  renderMetrics(filteredCGM,filteredBoluses,filteredBasals);
+  renderGlucoseChart(filteredCGM);
+  renderTIR(filteredCGM);
+  renderTDDChart(filteredBoluses,filteredBasals);
+  renderHourlyAvg(filteredCGM);
+  renderHourlyLows(filteredCGM);
+  renderInsulinSplit(filteredBoluses,filteredBasals);
+  renderSensitivityChart(filteredBoluses,filteredBasals);
 }
 
 function trendArrow(vals){
-  if(vals.length<3) return {arrow:'',cls:'trend-flat'};
+  if(vals.length<3) return{arrow:'',cls:'',dir:0};
   const mid=Math.floor(vals.length/2);
   const first=vals.slice(0,mid).reduce((a,b)=>a+b,0)/mid;
   const last=vals.slice(mid).reduce((a,b)=>a+b,0)/(vals.length-mid);
   const diff=last-first;
-  if(Math.abs(diff)<0.5) return {arrow:'→',cls:'trend-flat'};
-  return diff>0?{arrow:'↑',cls:'trend-up'}:{arrow:'↓',cls:'trend-down'};
+  if(Math.abs(diff)<0.3) return{arrow:'→',cls:'',dir:0};
+  return diff>0?{arrow:'↑',cls:'bad',dir:1}:{arrow:'↓',cls:'good',dir:-1};
 }
 
 function renderMetrics(cgm,boluses,basals){
@@ -315,9 +293,9 @@ function renderMetrics(cgm,boluses,basals){
     if(b.delivered) dayMap[k].basal+=b.delivered;
   });
   const dailyTDDs=Object.values(dayMap).map(d=>d.bolus+d.basal);
-  const {arrow,cls}=trendArrow(dailyTDDs);
-  const lowEvents=vals.filter(v=>v<LOW).length;
-  const highEvents=vals.filter(v=>v>HIGH).length;
+  const{arrow,cls}=trendArrow(dailyTDDs);
+  const lowCount=vals.filter(v=>v<LOW).length;
+  const highCount=vals.filter(v=>v>HIGH).length;
   document.getElementById('metrics-row').innerHTML=`
     <div class="metric"><div class="metric-label">Average BG</div><div class="metric-val">${avg}<span class="unit"> mg/dL</span></div></div>
     <div class="metric"><div class="metric-label">GMI</div><div class="metric-val ${gmi<7?'good':gmi<8?'warn':'bad'}">${gmi}<span class="unit">%</span></div></div>
@@ -326,7 +304,7 @@ function renderMetrics(cgm,boluses,basals){
     <div class="metric"><div class="metric-label">CV</div><div class="metric-val ${cv<=36?'good':'warn'}">${cv}<span class="unit">%</span></div></div>
     <div class="metric"><div class="metric-label">Avg TDD <span class="${cls}">${arrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
     <div class="metric"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-    <div class="metric"><div class="metric-label">Lows / Highs</div><div class="metric-val"><span style="color:var(--red)">${lowEvents}</span><span class="unit"> / </span><span style="color:var(--amber)">${highEvents}</span></div></div>
+    <div class="metric"><div class="metric-label">Lows / Highs</div><div class="metric-val"><span style="color:#A32D2D">${lowCount}</span><span class="unit"> / </span><span style="color:#854F0B">${highCount}</span></div></div>
   `;
 }
 
@@ -334,32 +312,33 @@ function renderGlucoseChart(cgm){
   if(glucChart) glucChart.destroy();
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const showBand=document.getElementById('show-range-band')?.checked;
-  const showExc=document.getElementById('show-excursions')?.checked;
+  const showBand=document.getElementById('show-band')?.checked;
+  const showDots=document.getElementById('show-dots')?.checked;
   const maxPts=600;
   const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
-  const sampled=cgm.filter((_,i)=>i%step===0);
+  const s=cgm.filter((_,i)=>i%step===0);
   const datasets=[{
-    data:sampled.map(d=>d.v),
-    borderWidth:1.5,pointRadius:0,pointHoverRadius:5,
+    data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,
     tension:0.2,fill:false,
-    segment:{borderColor:ctx=>{
-      const v=sampled[ctx.p1DataIndex]?.v;
-      return v<LOW?'#E24B4A':v>HIGH?'#EF9F27':'#378ADD';
-    }}
+    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#E24B4A':v>HIGH?'#EF9F27':'#378ADD';}}
   }];
   if(showBand){
-    datasets.push({data:sampled.map(()=>HIGH),borderColor:'rgba(239,159,39,0.3)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false});
-    datasets.push({data:sampled.map(()=>LOW),borderColor:'rgba(226,75,74,0.3)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false});
+    datasets.push({data:s.map(()=>HIGH),borderColor:'rgba(239,159,39,0.35)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
+    datasets.push({data:s.map(()=>LOW),borderColor:'rgba(226,75,74,0.35)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
   }
-  if(showExc){
-    const excPts=sampled.map(d=>d.v<LOW||d.v>HIGH?d.v:null);
-    datasets.push({data:excPts,borderColor:'transparent',pointRadius:sampled.map(d=>d.v<LOW||d.v>HIGH?3:0),pointBackgroundColor:sampled.map(d=>d.v<LOW?'#E24B4A':'#EF9F27'),pointBorderColor:'transparent',fill:false,tension:0});
+  if(showDots){
+    datasets.push({
+      data:s.map(d=>d.v<LOW||d.v>HIGH?d.v:null),
+      borderColor:'transparent',
+      pointRadius:s.map(d=>d.v<LOW||d.v>HIGH?3:0),
+      pointBackgroundColor:s.map(d=>d.v<LOW?'#E24B4A':'#EF9F27'),
+      pointBorderColor:'transparent',fill:false,tension:0
+    });
   }
   glucChart=new Chart(document.getElementById('glucChart'),{
     type:'line',
     data:{
-      labels:sampled.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),
+      labels:s.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),
       datasets
     },
     options:{
@@ -367,10 +346,7 @@ function renderGlucoseChart(cgm){
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
-        tooltip:{
-          filter:item=>item.datasetIndex===0,
-          callbacks:{label:ctx=>ctx.parsed.y+' mg/dL'}
-        }
+        tooltip:{filter:item=>item.datasetIndex===0,callbacks:{label:ctx=>ctx.parsed.y+' mg/dL'}}
       },
       scales:{
         x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},
@@ -384,11 +360,11 @@ function renderTIR(cgm){
   const vals=cgm.map(d=>d.v);
   const vLow=vals.filter(v=>v<54).length;
   const low=vals.filter(v=>v>=54&&v<LOW).length;
-  const inRange=vals.filter(v=>v>=LOW&&v<=HIGH).length;
+  const inR=vals.filter(v=>v>=LOW&&v<=HIGH).length;
   const high=vals.filter(v=>v>HIGH&&v<=250).length;
   const vHigh=vals.filter(v=>v>250).length;
   const pct=n=>Math.round(n/vals.length*100);
-  const p=[pct(vLow),pct(low),pct(inRange),pct(high),pct(vHigh)];
+  const p=[pct(vLow),pct(low),pct(inR),pct(high),pct(vHigh)];
   document.getElementById('tir-display').innerHTML=`
     <div class="tir-bar-wrap">
       <div class="tir-seg" style="width:${p[0]}%;background:#7f1d1d"></div>
@@ -408,34 +384,6 @@ function renderTIR(cgm){
   `;
 }
 
-function renderTIRSparkline(cgm){
-  const byDay={};
-  cgm.forEach(d=>{
-    const k=dayKey(d.t);
-    byDay[k]=byDay[k]||[];
-    byDay[k].push(d.v);
-  });
-  const days=Object.keys(byDay).sort((a,b)=>new Date(a)-new Date(b));
-  const bars=days.map(k=>{
-    const vals=byDay[k];
-    const pIn=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
-    const pLow=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
-    const pHigh=100-pIn-pLow;
-    const color=pIn>=80?'#639922':pIn>=60?'#EF9F27':'#E24B4A';
-    return`<div title="${k}: ${pIn}% in range, ${pLow}% low, ${pHigh}% high" style="flex:1;display:flex;flex-direction:column;gap:1px;height:100%">
-      <div style="flex:${pHigh};background:#EF9F27;border-radius:2px 2px 0 0;min-height:${pHigh>0?2:0}px"></div>
-      <div style="flex:${pIn};background:${color};min-height:${pIn>0?2:0}px"></div>
-      <div style="flex:${pLow};background:#E24B4A;border-radius:0 0 2px 2px;min-height:${pLow>0?2:0}px"></div>
-    </div>`;
-  }).join('');
-  document.getElementById('tir-sparkline').innerHTML=`
-    <div style="display:flex;gap:3px;height:60px;align-items:stretch">${bars}</div>
-    <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:var(--text3)">
-      <span>${days[0]||''}</span><span>${days[days.length-1]||''}</span>
-    </div>
-  `;
-}
-
 function renderTDDChart(boluses,basals){
   if(tddChart) tddChart.destroy();
   const days={};
@@ -445,33 +393,25 @@ function renderTDDChart(boluses,basals){
   const bolusData=labels.map(k=>Math.round(days[k].bolus*10)/10);
   const basalData=labels.map(k=>Math.round(days[k].basal*10)/10);
   const totalData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)*10)/10);
-  const showTrend=document.getElementById('show-trendline')?.checked;
+  const showTrend=document.getElementById('show-trend')?.checked;
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   const datasets=[
-    {label:'Bolus',data:bolusData,backgroundColor:'rgba(55,138,221,0.7)',borderRadius:3,stack:'tdd'},
-    {label:'Basal',data:basalData,backgroundColor:'rgba(127,119,221,0.7)',borderRadius:3,stack:'tdd'}
+    {label:'Bolus',data:bolusData,backgroundColor:'rgba(55,138,221,0.75)',borderRadius:3,stack:'tdd'},
+    {label:'Basal',data:basalData,backgroundColor:'rgba(127,119,221,0.75)',borderRadius:3,stack:'tdd'}
   ];
-  if(showTrend&&totalData.length>1){
-    const n=totalData.length;
-    const xMean=(n-1)/2;
-    const yMean=totalData.reduce((a,b)=>a+b,0)/n;
+  if(showTrend&&totalData.length>2){
+    const n=totalData.length,xM=(n-1)/2,yM=totalData.reduce((a,b)=>a+b,0)/n;
     let num=0,den=0;
-    totalData.forEach((y,i)=>{num+=(i-xMean)*(y-yMean);den+=(i-xMean)**2;});
-    const slope=den?num/den:0;
-    const intercept=yMean-slope*xMean;
-    const trendLine=totalData.map((_,i)=>Math.round((slope*i+intercept)*10)/10);
-    datasets.push({label:'Trend',data:trendLine,type:'line',borderColor:'#E24B4A',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined});
+    totalData.forEach((y,i)=>{num+=(i-xM)*(y-yM);den+=(i-xM)**2;});
+    const slope=den?num/den:0,inter=yM-slope*xM;
+    datasets.push({label:'Trend',data:totalData.map((_,i)=>Math.round((slope*i+inter)*10)/10),type:'line',borderColor:'#E24B4A',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined});
   }
   tddChart=new Chart(document.getElementById('tddChart'),{
-    type:'bar',
-    data:{labels,datasets},
+    type:'bar',data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{footer:items=>{const t=items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0);return'TDD: '+Math.round(t*10)/10+' u';}}}
-      },
+      plugins:{legend:{display:false},tooltip:{callbacks:{footer:items=>{const t=items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0);return'TDD: '+Math.round(t*10)/10+' u';}}}},
       scales:{
         x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},
         y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}
@@ -480,39 +420,48 @@ function renderTDDChart(boluses,basals){
   });
 }
 
-function renderExcursionTable(cgm){
-  const byDay={};
-  cgm.forEach(d=>{
-    const k=dayKey(d.t);
-    byDay[k]=byDay[k]||{lows:[],highs:[],all:[]};
-    byDay[k].all.push(d.v);
-    if(d.v<LOW) byDay[k].lows.push(d.v);
-    if(d.v>HIGH) byDay[k].highs.push(d.v);
+function renderHourlyAvg(cgm){
+  if(hourlyAvgChart) hourlyAvgChart.destroy();
+  const hours=Array.from({length:24},()=>[]);
+  cgm.forEach(d=>hours[d.t.getHours()].push(d.v));
+  const avgs=hours.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
+  const colors=avgs.map(v=>v===null?'rgba(136,135,128,0.3)':v>HIGH?'rgba(239,159,39,0.8)':v<LOW?'rgba(226,75,74,0.8)':'rgba(99,153,34,0.8)');
+  const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
+  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
+  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  hourlyAvgChart=new Chart(document.getElementById('hourlyAvgChart'),{
+    type:'bar',
+    data:{labels,datasets:[{data:avgs,backgroundColor:colors,borderRadius:4}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}}},
+      scales:{
+        x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
+        y:{min:60,max:200,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
+      }
+    }
   });
-  const days=Object.keys(byDay).sort((a,b)=>new Date(b)-new Date(a));
-  const rows=days.map(k=>{
-    const d=byDay[k];
-    const avgBG=Math.round(d.all.reduce((a,b)=>a+b,0)/d.all.length);
-    const lowCount=d.lows.length;
-    const highCount=d.highs.length;
-    const avgLow=lowCount?Math.round(d.lows.reduce((a,b)=>a+b,0)/lowCount):null;
-    const avgHigh=highCount?Math.round(d.highs.reduce((a,b)=>a+b,0)/highCount):null;
-    const pIn=Math.round(d.all.filter(v=>v>=LOW&&v<=HIGH).length/d.all.length*100);
-    const status=pIn>=80?'good':pIn>=60?'warn':'bad';
-    return`<tr>
-      <td style="font-weight:500">${k}</td>
-      <td>${avgBG} mg/dL</td>
-      <td><span class="badge ${status}">${pIn}%</span></td>
-      <td>${lowCount>0?`<span class="badge badge-low">${lowCount} events · avg ${avgLow}</span>`:'<span style="color:var(--text3);font-size:12px">none</span>'}</td>
-      <td>${highCount>0?`<span class="badge badge-high">${highCount} events · avg ${avgHigh}</span>`:'<span style="color:var(--text3);font-size:12px">none</span>'}</td>
-    </tr>`;
-  }).join('');
-  document.getElementById('excursion-table').innerHTML=`
-    <table class="excursion-table">
-      <thead><tr><th>Date</th><th>Avg BG</th><th>TIR</th><th>Lows &lt;70</th><th>Highs &gt;150</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
+}
+
+function renderHourlyLows(cgm){
+  if(hourlyLowChart) hourlyLowChart.destroy();
+  const hours=Array.from({length:24},()=>0);
+  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()]++;});
+  const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
+  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
+  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  hourlyLowChart=new Chart(document.getElementById('hourlyLowChart'),{
+    type:'bar',
+    data:{labels,datasets:[{data:hours,backgroundColor:'rgba(226,75,74,0.75)',borderRadius:4}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings below 70'}}},
+      scales:{
+        x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
+        y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}
+      }
+    }
+  });
 }
 
 function renderInsulinSplit(boluses,basals){
@@ -523,6 +472,8 @@ function renderInsulinSplit(boluses,basals){
   const pBas=tdd>0?Math.round(totalBasal/tdd*100):0;
   const avgTDD=Math.round(tdd/currentDays*10)/10;
   const avgTDDkg=Math.round(avgTDD/WEIGHT_KG*10)/10;
+  const splitStatus=pB>60?'Bolus-heavy — consider basal adjustment':pBas>60?'Basal-heavy — review basal rates':'Near optimal split';
+  const splitColor=pB>60||pBas>60?'#854F0B':'#3B6D11';
   document.getElementById('insulin-split').innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
@@ -544,7 +495,10 @@ function renderInsulinSplit(boluses,basals){
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#378ADD;margin-right:4px;vertical-align:middle"></span>Bolus ${pB}%</span>
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#7F77DD;margin-right:4px;vertical-align:middle"></span>Basal ${pBas}%</span>
     </div>
-    <div style="margin-top:12px;font-size:11px;color:var(--text3)">Avg TDD: ${avgTDD} u/day · ${avgTDDkg} u/kg · over ${currentDays} days</div>
+    <div class="benchmark" style="border-left:3px solid ${splitColor};border-radius:0 var(--radius-sm) var(--radius-sm) 0">
+      <span style="font-size:11px;color:${splitColor}">${splitStatus}</span>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text3)">Avg TDD: ${avgTDD} u/day · ${avgTDDkg} u/kg · ${currentDays} days</div>
   `;
 }
 
@@ -555,33 +509,30 @@ function renderSensitivityChart(boluses,basals){
   basals.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].basal+=b.delivered;});
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
   const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*100)/100);
+  const rolling7=tddKgData.map((_,i)=>{
+    const window=tddKgData.slice(Math.max(0,i-6),i+1);
+    return Math.round(window.reduce((a,b)=>a+b,0)/window.length*100)/100;
+  });
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   sensitivityChart=new Chart(document.getElementById('sensitivityChart'),{
     type:'line',
     data:{
       labels,
-      datasets:[{
-        data:tddKgData,borderColor:'#1D9E75',borderWidth:2,
-        pointRadius:3,pointBackgroundColor:'#1D9E75',
-        tension:0.3,fill:true,backgroundColor:'rgba(29,158,117,0.07)'
-      }]
+      datasets:[
+        {label:'Daily',data:tddKgData,borderColor:'rgba(29,158,117,0.4)',borderWidth:1,pointRadius:2,pointBackgroundColor:'rgba(29,158,117,0.4)',tension:0.2,fill:false},
+        {label:'7d avg',data:rolling7,borderColor:'#1D9E75',borderWidth:2,borderDash:[4,4],pointRadius:0,tension:0.3,fill:false}
+      ]
     },
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' u/kg'}}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.parsed.y+' u/kg'}}},
       scales:{
         x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},
         y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
       }
     }
   });
-}
-
-function toggleSection(id,toggle){
-  const el=document.getElementById(id);
-  toggle.classList.toggle('collapsed');
-  el.style.maxHeight=toggle.classList.contains('collapsed')?'0':'2000px';
 }
 
 loadFromOneDrive();
