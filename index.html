@@ -32,43 +32,53 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .status-dot.live{background:#639922;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 .range-tabs{display:flex;gap:4px;background:var(--surface2);border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content}
-.range-tab{padding:6px 16px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:none}
+.range-tab{padding:6px 14px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:none}
 .range-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:0;margin-bottom:20px;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.metric-group{display:contents}
-.metric{background:var(--surface2);padding:14px 16px;border-right:0.5px solid var(--border)}
-.metric:last-child{border-right:none}
-.metric-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-.metric-val{font-size:22px;font-weight:600;color:var(--text);line-height:1}
-.metric-val .unit{font-size:11px;font-weight:400;color:var(--text3)}
-.metric-val.good{color:var(--green)}
-.metric-val.warn{color:var(--amber)}
-.metric-val.bad{color:var(--red)}
-.metric-group-gluc .metric{border-top:3px solid #378ADD}
-.metric-group-ins .metric{border-top:3px solid #7F77DD}
 .metrics-wrap{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
 .metrics-section{flex:1;min-width:0;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .metrics-section-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;border-bottom:0.5px solid var(--border)}
 .metrics-section-label.gluc{color:#185FA5;background:rgba(55,138,221,0.07);border-left:3px solid #378ADD}
 .metrics-section-label.ins{color:#534AB7;background:rgba(127,119,221,0.07);border-left:3px solid #7F77DD}
-.metrics-section .metrics-row{display:flex;flex-wrap:wrap}
-.metric-cell{flex:1;min-width:100px;padding:12px 14px;border-right:0.5px solid var(--border);border-bottom:0.5px solid var(--border)}
+.metrics-row{display:flex;flex-wrap:wrap}
+.metric-cell{flex:1;min-width:90px;padding:12px 14px;border-right:0.5px solid var(--border);border-bottom:0.5px solid var(--border)}
 .metric-cell:last-child{border-right:none}
+.metric-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.metric-val{font-size:22px;font-weight:600;color:var(--text);line-height:1}
+.metric-val .unit{font-size:11px;font-weight:400;color:var(--text3)}
+.metric-val.good{color:var(--green)}
+.metric-val.warn{color:var(--amber)}
+.metric-val.bad{color:var(--red)}
 .card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
 .card-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
 .two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px}
+.three-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px}
 .tir-bar-wrap{display:flex;height:36px;border-radius:10px;overflow:hidden;margin-bottom:12px}
 .tir-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,0.95);overflow:hidden;white-space:nowrap;min-width:0}
 .tir-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
-.insights{margin-bottom:16px;display:grid;gap:8px}
-.insight{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-radius:var(--radius-sm);border-left:3px solid}
+.dow-table{width:100%;border-collapse:collapse;font-size:13px}
+.dow-table th{font-size:10px;font-weight:600;color:var(--text3);text-align:left;padding:6px 10px;border-bottom:0.5px solid var(--border);text-transform:uppercase;letter-spacing:.05em}
+.dow-table td{padding:9px 10px;border-bottom:0.5px solid var(--border)}
+.dow-table tr:last-child td{border-bottom:none}
+.dow-table tr:hover td{background:var(--surface2)}
+.rank-badge{display:inline-block;width:18px;height:18px;border-radius:50%;font-size:10px;font-weight:700;text-align:center;line-height:18px}
+.insights-dropdown{margin-bottom:16px}
+.insights-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer;user-select:none}
+.insights-header-left{display:flex;align-items:center;gap:10px}
+.insights-title{font-size:13px;font-weight:600;color:var(--text)}
+.insights-summary{font-size:12px;color:var(--text3)}
+.insights-chevron{font-size:12px;color:var(--text3);transition:transform 0.25s}
+.insights-chevron.open{transform:rotate(180deg)}
+.insights-body{display:none;border:0.5px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:16px;background:var(--surface)}
+.insights-body.open{display:block}
+.insight{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-radius:var(--radius-sm);border-left:3px solid;margin-bottom:8px}
+.insight:last-child{margin-bottom:0}
 .insight.green{background:rgba(74,158,26,0.08);border-color:#4a9e1a}
 .insight.amber{background:rgba(240,165,0,0.08);border-color:#F0A500}
 .insight.red{background:rgba(226,75,74,0.08);border-color:#E24B4A}
-.insight-icon{font-size:14px;margin-top:1px;flex-shrink:0}
-.insight-text{font-size:13px;color:var(--text)}
-.insight-text strong{font-weight:600}
-.insight-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.insight-icon{font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700}
+.insight-text{font-size:13px;color:var(--text);font-weight:600}
+.insight-sub{font-size:11px;color:var(--text3);margin-top:2px;line-height:1.5}
+.split-mini{display:inline-flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;width:60px;vertical-align:middle;margin-left:6px}
 .loading-state{text-align:center;padding:4rem 2rem;color:var(--text3)}
 .spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -79,9 +89,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media print{
   .topbar-right,.range-tabs{display:none!important}
   .app{padding:8px}
-  .card{break-inside:avoid;margin-bottom:10px}
+  .card,.metrics-wrap,.dow-table{break-inside:avoid}
   body{background:#fff!important;color:#000!important}
-  .insights{break-inside:avoid}
+  .insights-header{display:none}
+  .insights-body{display:block!important;border:0.5px solid #ccc;border-radius:var(--radius);page-break-before:always;padding:20px}
+  .insight{break-inside:avoid}
 }
 </style>
 </head>
@@ -90,7 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div class="topbar">
     <div>
       <h1>Loop dashboard</h1>
-      <p id="data-range">Loading your data...</p>
+      <p id="data-range">Loading...</p>
     </div>
     <div class="topbar-right">
       <span class="status-dot" id="status-dot"></span>
@@ -110,21 +122,21 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div id="upload-zone-wrap" style="display:none">
     <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
       <h3>Upload loop_data_slim.csv</h3>
-      <p>Download from OneDrive app then upload here</p>
+      <p>Download from OneDrive then upload here</p>
     </div>
   </div>
 
   <div id="dashboard" style="display:none">
+
     <div class="range-tabs">
-      <button class="range-tab active" onclick="setRange(7,this)">7d</button>
+      <button class="range-tab active" onclick="setRange(3,this)">3d</button>
+      <button class="range-tab" onclick="setRange(7,this)">7d</button>
       <button class="range-tab" onclick="setRange(14,this)">14d</button>
       <button class="range-tab" onclick="setRange(30,this)">30d</button>
       <button class="range-tab" onclick="setRange(60,this)">60d</button>
     </div>
 
     <div class="metrics-wrap" id="metrics-wrap"></div>
-
-    <div class="insights" id="insights"></div>
 
     <div class="card">
       <div class="card-title">Glucose trace (mg/dL)</div>
@@ -145,13 +157,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="card">
         <div class="card-title">Average glucose by 3-hour block</div>
         <div style="position:relative;width:100%;height:220px">
-          <canvas id="hourlyAvgChart" role="img" aria-label="Average glucose by 3-hour block"></canvas>
+          <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Daily TDD trend — bolus (blue) + basal (purple)</div>
+      <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
       <div style="display:flex;gap:12px;margin-bottom:10px">
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
       </div>
@@ -162,18 +174,55 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="two-col">
       <div class="card">
-        <div class="card-title">Low events by hour (&lt;70 mg/dL)</div>
+        <div class="card-title">Low events by hour (&lt;70)</div>
         <div style="position:relative;width:100%;height:180px">
           <canvas id="hourlyLowChart" role="img" aria-label="Low events by hour"></canvas>
         </div>
       </div>
       <div class="card">
-        <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
-        <div style="position:relative;width:100%;height:150px">
-          <canvas id="sensitivityChart" role="img" aria-label="TDD per kg trend"></canvas>
+        <div class="card-title">High events by hour (&gt;150)</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="hourlyHighChart" role="img" aria-label="High events by hour"></canvas>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
       </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Overnight vs daytime TIR</div>
+        <div id="overnight-display"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Post-meal glucose pattern</div>
+        <div id="postmeal-display"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Day of week breakdown</div>
+      <div id="dow-display"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
+      <div style="position:relative;width:100%;height:160px">
+        <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
+    </div>
+
+    <div class="insights-dropdown">
+      <div class="insights-header" onclick="toggleInsights()">
+        <div class="insights-header-left">
+          <span style="font-size:16px">💡</span>
+          <div>
+            <div class="insights-title">Insights & recommendations</div>
+            <div class="insights-summary" id="insights-summary">Loading...</div>
+          </div>
+        </div>
+        <span class="insights-chevron" id="insights-chevron">▼</span>
+      </div>
+      <div class="insights-body" id="insights-body"></div>
     </div>
 
   </div>
@@ -183,13 +232,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 Chart.register(ChartDataLabels);
 const ONEDRIVE_URL="https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL3gvYy9hYThiZTRkZjIxZTk5YTk1L0lRQ0dxcGszdTREQ1RiRnljem1rYVdmYUFTTHk5d3lnQ0pEa295eEI0R3VNcFE/root/content";
 const LOW=70,HIGH=150,WEIGHT_KG=81.6;
+const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 let allCGM=[],allBoluses=[],allBasals=[];
 let filteredCGM=[],filteredBoluses=[],filteredBasals=[];
-let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null;
-let currentDays=7;
+let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null,hourlyHighChart=null;
+let currentDays=3;
 
-const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-function fmtDate(t){return DAYS[t.getDay()]+' '+t.toLocaleDateString([],{month:'short',day:'numeric'});}
+function fmtDate(t){return DAYS_SHORT[t.getDay()]+' '+t.toLocaleDateString([],{month:'short',day:'numeric'});}
 function dayKey(t){return fmtDate(t);}
 
 async function loadFromOneDrive(){
@@ -221,16 +271,14 @@ function showLoading(){
 }
 
 function showError(msg){
-  const eb=document.getElementById('error-box');
-  eb.textContent=msg;eb.style.display='block';
+  const eb=document.getElementById('error-box');eb.textContent=msg;eb.style.display='block';
 }
 
 function parseCSV(text){
   const lines=text.trim().split('\n');
   const headers=lines[0].split(',').map(h=>h.trim());
   return lines.slice(1).map(line=>{
-    const vals=line.split(',');
-    const obj={};
+    const vals=line.split(',');const obj={};
     headers.forEach((h,i)=>obj[h]=(vals[i]||'').trim());
     return obj;
   });
@@ -274,16 +322,19 @@ function renderAll(){
   if(!filteredCGM.length){showError('No data in selected range.');return;}
   document.getElementById('error-box').style.display='none';
   const minT=filteredCGM[0].t,maxT=filteredCGM[filteredCGM.length-1].t;
-  document.getElementById('data-range').textContent=
-    fmtDate(minT)+' — '+fmtDate(maxT)+' · '+filteredCGM.length+' readings';
+  document.getElementById('data-range').textContent=fmtDate(minT)+' — '+fmtDate(maxT)+' · '+filteredCGM.length+' readings';
   renderMetrics(filteredCGM,filteredBoluses,filteredBasals);
-  renderInsights(filteredCGM,filteredBoluses,filteredBasals);
   renderGlucoseChart(filteredCGM);
   renderTIR(filteredCGM);
   renderHourlyAvg(filteredCGM);
   renderTDDChart(filteredBoluses,filteredBasals);
   renderHourlyLows(filteredCGM);
+  renderHourlyHighs(filteredCGM);
+  renderOvernightVsDaytime(filteredCGM);
+  renderPostMeal(filteredCGM);
+  renderDayOfWeek(filteredCGM,filteredBoluses,filteredBasals);
   renderSensitivityChart(filteredBoluses,filteredBasals);
+  renderInsights(filteredCGM,filteredBoluses,filteredBasals);
 }
 
 function renderMetrics(cgm,boluses,basals){
@@ -298,6 +349,9 @@ function renderMetrics(cgm,boluses,basals){
   const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
   const tdd=Math.round((totalBolus+totalBasal)/currentDays*10)/10;
   const tddKg=(Math.round(tdd/WEIGHT_KG*100)/100).toFixed(2);
+  const totalT=totalBolus+totalBasal;
+  const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
+  const pBasal=100-pBolus;
   const dayMap={};
   [...boluses,...basals].forEach(b=>{
     const k=dayKey(b.t);dayMap[k]=dayMap[k]||{bolus:0,basal:0};
@@ -310,22 +364,21 @@ function renderMetrics(cgm,boluses,basals){
     const mid=Math.floor(dailyTDDs.length/2);
     const f=dailyTDDs.slice(0,mid).reduce((a,b)=>a+b,0)/mid;
     const l=dailyTDDs.slice(mid).reduce((a,b)=>a+b,0)/(dailyTDDs.length-mid);
-    const d=l-f;
-    if(Math.abs(d)>0.3){tddArrow=d>0?'↑':'↓';tddCls=d>0?'bad':'good';}
+    const d=l-f;if(Math.abs(d)>0.3){tddArrow=d>0?'↑':'↓';tddCls=d>0?'bad':'good';}
   }
-  const totalT=totalBolus+totalBasal;
-  const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
-  const pBasal=totalT>0?Math.round(totalBasal/totalT*100):0;
-
+  const tirCls=tir>=85?'good':tir>=70?'warn':'bad';
+  const cvCls=cv<=25?'good':cv<=36?'warn':'bad';
+  const gmiCls=gmi<6.5?'good':gmi<7?'warn':'bad';
+  const a1cCls=ea1c<6.5?'good':ea1c<7?'warn':'bad';
   document.getElementById('metrics-wrap').innerHTML=`
     <div class="metrics-section" style="flex:3">
       <div class="metrics-section-label gluc">Glucose</div>
       <div class="metrics-row">
-        <div class="metric-cell"><div class="metric-label">Average BG</div><div class="metric-val">${avg}<span class="unit"> mg/dL</span></div></div>
-        <div class="metric-cell"><div class="metric-label">GMI</div><div class="metric-val ${gmi<7?'good':gmi<8?'warn':'bad'}">${gmi}<span class="unit">%</span></div></div>
-        <div class="metric-cell"><div class="metric-label">Est. A1C</div><div class="metric-val ${ea1c<7?'good':ea1c<8?'warn':'bad'}">${ea1c}<span class="unit">%</span></div></div>
-        <div class="metric-cell"><div class="metric-label">TIR</div><div class="metric-val ${tir>=70?'good':tir>=50?'warn':'bad'}">${tir}<span class="unit">%</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">CV</div><div class="metric-val ${cv<=36?'good':'warn'}">${cv}<span class="unit">%</span></div></div>
+        <div class="metric-cell"><div class="metric-label">Avg BG</div><div class="metric-val">${avg}<span class="unit"> mg/dL</span></div></div>
+        <div class="metric-cell"><div class="metric-label">GMI</div><div class="metric-val ${gmiCls}">${gmi}<span class="unit">%</span></div></div>
+        <div class="metric-cell"><div class="metric-label">Est. A1C</div><div class="metric-val ${a1cCls}">${ea1c}<span class="unit">%</span></div></div>
+        <div class="metric-cell"><div class="metric-label">TIR</div><div class="metric-val ${tirCls}">${tir}<span class="unit">%</span></div></div>
+        <div class="metric-cell" style="border-right:none"><div class="metric-label">CV</div><div class="metric-val ${cvCls}">${cv}<span class="unit">%</span></div></div>
       </div>
     </div>
     <div class="metrics-section" style="flex:2">
@@ -339,178 +392,55 @@ function renderMetrics(cgm,boluses,basals){
   `;
 }
 
-function renderInsights(cgm,boluses,basals){
-  const vals=cgm.map(d=>d.v);
-  const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-  const sd=Math.round(Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/vals.length));
-  const cv=Math.round(sd/avg*100);
-  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
-  const lowPct=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
-  const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
-  const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
-  const tdd=Math.round((totalBolus+totalBasal)/currentDays*10)/10;
-  const tddKg=Math.round(tdd/WEIGHT_KG*100)/100;
-  const totalT=totalBolus+totalBasal;
-  const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
-  const pBasal=100-pBolus;
-
-  const hours=Array.from({length:24},()=>0);
-  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()]++;});
-  const maxLowHour=hours.indexOf(Math.max(...hours));
-  const maxLowCount=hours[maxLowHour];
-  const hourLabel=h=>h===0?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
-
-  const blocks=Array.from({length:8},()=>[]);
-  cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
-  const blockAvgs=blocks.map(b=>b.length?Math.round(b.reduce((a,c)=>a+c,0)/b.length):null);
-  const highBlock=blockAvgs.indexOf(Math.max(...blockAvgs.filter(v=>v!==null)));
-  const blockNames=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-
-  const dayMap={};
-  [...boluses,...basals].forEach(b=>{
-    const k=dayKey(b.t);dayMap[k]=dayMap[k]||{bolus:0,basal:0};
-    if(b.units) dayMap[k].bolus+=b.units;
-    if(b.delivered) dayMap[k].basal+=b.delivered;
-  });
-  const dailyTDDs=Object.values(dayMap).map(d=>d.bolus+d.basal);
-  let tddTrending=0;
-  if(dailyTDDs.length>=3){
-    const mid=Math.floor(dailyTDDs.length/2);
-    const f=dailyTDDs.slice(0,mid).reduce((a,b)=>a+b,0)/mid;
-    const l=dailyTDDs.slice(mid).reduce((a,b)=>a+b,0)/(dailyTDDs.length-mid);
-    tddTrending=l-f;
-  }
-
-  const items=[];
-
-  if(tir>=80) items.push({cls:'green',icon:'✓',text:'Excellent time in range',sub:`${tir}% in range — above the 80% threshold for well-controlled T1D`});
-  else if(tir>=70) items.push({cls:'green',icon:'✓',text:'Time in range on target',sub:`${tir}% in range — meeting the clinical goal of >70%`});
-  else if(tir>=60) items.push({cls:'amber',icon:'!',text:'Time in range slightly below target',sub:`${tir}% in range — goal is >70%. Review the 3-hour block chart to find where losses are occurring`});
-  else items.push({cls:'red',icon:'!',text:'Time in range needs attention',sub:`${tir}% in range — significant opportunity to improve. Target >70%`});
-
-  if(cv<=30) items.push({cls:'green',icon:'✓',text:'Low glucose variability',sub:`CV ${cv}% — excellent stability. Target is ≤36%`});
-  else if(cv<=36) items.push({cls:'green',icon:'✓',text:'Glucose variability within target',sub:`CV ${cv}% — within the ≤36% clinical target`});
-  else items.push({cls:'amber',icon:'!',text:'Glucose variability elevated',sub:`CV ${cv}% — above the ≤36% target. High variability increases hypoglycemia risk even with good average BG`});
-
-  if(lowPct>4) items.push({cls:'red',icon:'!',text:`Low burden above target (${lowPct}% of readings)`,sub:`Clinical target is <4% below 70 mg/dL. Review overnight basal rates and pre-exercise settings`});
-  else if(lowPct>2) items.push({cls:'amber',icon:'!',text:`Moderate low burden (${lowPct}% of readings)`,sub:`Watch for patterns — target is <4%. Check the low events chart for recurring times`});
-  else items.push({cls:'green',icon:'✓',text:`Low burden well controlled (${lowPct}% of readings)`,sub:`Below the 4% clinical threshold`});
-
-  if(maxLowCount>=3) items.push({cls:'amber',icon:'!',text:`Recurring lows at ${hourLabel(maxLowHour)}`,sub:`${maxLowCount} readings below 70 mg/dL in this hour over the period — consider basal adjustment or timing review`});
-
-  if(blockAvgs[highBlock]>130) items.push({cls:'amber',icon:'!',text:`Highest avg glucose in ${blockNames[highBlock]} block (${blockAvgs[highBlock]} mg/dL)`,sub:`This block consistently runs higher — consider earlier pre-bolusing or reviewing carb timing`});
-
-  if(pBolus>65) items.push({cls:'amber',icon:'!',text:`Bolus-heavy split (${pBolus}% bolus)`,sub:`Optimal closed-loop split is typically 50–55% bolus. Higher bolus % can indicate undertreated basal or frequent correction boluses`});
-  else if(pBasal>65) items.push({cls:'amber',icon:'!',text:`Basal-heavy split (${pBasal}% basal)`,sub:`Loop is delivering significant automated basal. May indicate basal rates set higher than needed, with Loop compensating`});
-  else items.push({cls:'green',icon:'✓',text:`Balanced bolus/basal split (${pBolus}%/${pBasal}%)`,sub:`Near the optimal 50–55% bolus ratio for closed-loop insulin delivery`});
-
-  if(tddKg>0.6) items.push({cls:'amber',icon:'!',text:`TDD/kg above typical range (${tddKg} u/kg)`,sub:`Typical T1D on closed loop: 0.4–0.6 u/kg. Values above 0.6 may suggest early insulin resistance — track alongside TG:HDL ratio`});
-  else if(tddKg<0.3) items.push({cls:'green',icon:'✓',text:`TDD/kg in low-normal range (${tddKg} u/kg)`,sub:`Indicates good insulin sensitivity. Typical range is 0.4–0.6 u/kg`});
-  else items.push({cls:'green',icon:'✓',text:`TDD/kg in normal range (${tddKg} u/kg)`,sub:`Within the typical T1D closed-loop range of 0.4–0.6 u/kg`});
-
-  if(tddTrending>2) items.push({cls:'amber',icon:'!',text:'TDD trending upward',sub:`Daily insulin needs have increased ~${Math.round(tddTrending*10)/10}u over the period — may indicate increasing insulin resistance or higher carb load`});
-  else if(tddTrending<-2) items.push({cls:'green',icon:'✓',text:'TDD trending downward',sub:`Daily insulin needs decreasing ~${Math.round(Math.abs(tddTrending)*10)/10}u over the period — positive signal for insulin sensitivity`});
-
-  document.getElementById('insights').innerHTML=`
-    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Insights & recommendations</div>
-    ${items.map(i=>`
-      <div class="insight ${i.cls}">
-        <div class="insight-icon">${i.icon}</div>
-        <div><div class="insight-text"><strong>${i.text}</strong></div><div class="insight-sub">${i.sub}</div></div>
-      </div>
-    `).join('')}
-  `;
-}
-
 function renderGlucoseChart(cgm){
   if(glucChart) glucChart.destroy();
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   const showBand=document.getElementById('show-band')?.checked;
   const showDots=document.getElementById('show-dots')?.checked;
-  const maxPts=600;
-  const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
+  const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
-  const datasets=[{
-    data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,
-    tension:0.2,fill:false,
-    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#E24B4A':v>HIGH?'#EF9F27':'#378ADD';}}
-  }];
+  const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
+    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#E24B4A':v>HIGH?'#EF9F27':'#378ADD';}}}];
   if(showBand){
     datasets.push({data:s.map(()=>HIGH),borderColor:'rgba(239,159,39,0.35)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
     datasets.push({data:s.map(()=>LOW),borderColor:'rgba(226,75,74,0.35)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
   }
   if(showDots){
-    datasets.push({
-      data:s.map(d=>d.v<LOW||d.v>HIGH?d.v:null),
-      borderColor:'transparent',
+    datasets.push({data:s.map(d=>d.v<LOW||d.v>HIGH?d.v:null),borderColor:'transparent',
       pointRadius:s.map(d=>d.v<LOW||d.v>HIGH?3:0),
       pointBackgroundColor:s.map(d=>d.v<LOW?'#E24B4A':'#EF9F27'),
-      pointBorderColor:'transparent',fill:false,tension:0
-    });
+      pointBorderColor:'transparent',fill:false,tension:0});
   }
   glucChart=new Chart(document.getElementById('glucChart'),{
-    type:'line',
-    data:{
-      labels:s.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),
-      datasets
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
+    type:'line',data:{labels:s.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),datasets},
+    options:{responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{display:false},
-        datalabels:{display:false},
-        tooltip:{filter:item=>item.datasetIndex===0,callbacks:{label:ctx=>ctx.parsed.y+' mg/dL'}}
-      },
+      plugins:{legend:{display:false},datalabels:{display:false},tooltip:{filter:i=>i.datasetIndex===0,callbacks:{label:ctx=>ctx.parsed.y+' mg/dL'}}},
       scales:{
         x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},
         y:{min:40,max:250,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
-      }
-    }
+      }}
   });
 }
 
 function renderTIR(cgm){
   const vals=cgm.map(d=>d.v);
-  const vLow=vals.filter(v=>v<54).length;
-  const low=vals.filter(v=>v>=54&&v<LOW).length;
-  const inR=vals.filter(v=>v>=LOW&&v<=HIGH).length;
-  const high=vals.filter(v=>v>HIGH&&v<=250).length;
-  const vHigh=vals.filter(v=>v>250).length;
-  const pct=n=>Math.round(n/vals.length*100);
-  const p=[pct(vLow),pct(low),pct(inR),pct(high),pct(vHigh)];
-  function seg(pv,bg){
-    return`<div class="tir-seg" style="width:${pv}%;background:${bg};min-width:${pv>0?'4px':'0'}">${pv>=8?pv+'%':''}</div>`;
-  }
-  document.getElementById('tir-display').innerHTML=`
-    <div class="tir-bar-wrap">
-      ${seg(p[0],'#c81c1c')}${seg(p[1],'#E24B4A')}${seg(p[2],'#4a9e1a')}${seg(p[3],'#F0A500')}${seg(p[4],'#c47000')}
-    </div>
-    <div style="display:grid;gap:8px;margin-top:12px">
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#c81c1c;margin-top:3px;flex-shrink:0"></span>
-        <div><div style="font-size:12px;font-weight:500;color:#c81c1c">Very low ${p[0]}% <span style="font-weight:400;color:var(--text3)">· target &lt;1%</span></div><div style="font-size:11px;color:var(--text3)">&lt;54 mg/dL — serious hypoglycemia, seizure risk</div></div>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#E24B4A;margin-top:3px;flex-shrink:0"></span>
-        <div><div style="font-size:12px;font-weight:500;color:#A32D2D">Low ${p[1]}% <span style="font-weight:400;color:var(--text3)">· target &lt;4%</span></div><div style="font-size:11px;color:var(--text3)">54–69 mg/dL — symptomatic hypoglycemia</div></div>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#4a9e1a;margin-top:3px;flex-shrink:0"></span>
-        <div><div style="font-size:12px;font-weight:500;color:#3B6D11">In range ${p[2]}% <span style="font-weight:400;color:var(--text3)">· target &gt;70%</span></div><div style="font-size:11px;color:var(--text3)">70–150 mg/dL — your personal target range</div></div>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#F0A500;margin-top:3px;flex-shrink:0"></span>
-        <div><div style="font-size:12px;font-weight:500;color:#854F0B">High ${p[3]}% <span style="font-weight:400;color:var(--text3)">· target &lt;25%</span></div><div style="font-size:11px;color:var(--text3)">150–250 mg/dL — hyperglycemia, long-term complication risk</div></div>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2)">
-        <span class="tir-dot" style="background:#c47000;margin-top:3px;flex-shrink:0"></span>
-        <div><div style="font-size:12px;font-weight:500;color:#633806">Very high ${p[4]}% <span style="font-weight:400;color:var(--text3)">· target &lt;5%</span></div><div style="font-size:11px;color:var(--text3)">&gt;250 mg/dL — significant hyperglycemia, DKA risk if sustained</div></div>
-      </div>
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:10px">${vals.length} readings · ${currentDays} days</div>
-  `;
+  const counts=[vals.filter(v=>v<54).length,vals.filter(v=>v>=54&&v<LOW).length,vals.filter(v=>v>=LOW&&v<=HIGH).length,vals.filter(v=>v>HIGH&&v<=250).length,vals.filter(v=>v>250).length];
+  const p=counts.map(c=>Math.round(c/vals.length*100));
+  const segs=[['#c81c1c','Very low','<54 mg/dL — serious hypoglycemia, seizure risk','<1%'],
+    ['#E24B4A','Low','54–69 mg/dL — symptomatic hypoglycemia','<2% (elite)'],
+    ['#4a9e1a','In range','70–150 mg/dL — your personal target range','>85% (elite)'],
+    ['#F0A500','High','150–250 mg/dL — hyperglycemia, long-term risk','<15% (elite)'],
+    ['#c47000','Very high','>250 mg/dL — DKA risk if sustained','<1%']];
+  const barSegs=segs.map((s,i)=>`<div class="tir-seg" style="width:${p[i]}%;background:${s[0]};min-width:${p[i]>0?'4px':'0'}">${p[i]>=8?p[i]+'%':''}</div>`).join('');
+  const rows=segs.map((s,i)=>`
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2);margin-bottom:6px">
+      <span class="tir-dot" style="background:${s[0]};margin-top:3px;flex-shrink:0"></span>
+      <div style="flex:1"><div style="font-size:12px;font-weight:500;color:${s[0]}">${s[1]} ${p[i]}% <span style="font-weight:400;color:var(--text3)">· target ${s[3]}</span></div>
+      <div style="font-size:11px;color:var(--text3)">${s[2]}</div></div>
+    </div>`).join('');
+  document.getElementById('tir-display').innerHTML=`<div class="tir-bar-wrap">${barSegs}</div>${rows}<div style="font-size:11px;color:var(--text3);margin-top:8px">${vals.length} readings · ${currentDays} days</div>`;
 }
 
 function renderHourlyAvg(cgm){
@@ -519,41 +449,17 @@ function renderHourlyAvg(cgm){
   cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
   const avgs=blocks.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const colors=avgs.map(v=>{
-    if(v===null) return'rgba(136,135,128,0.3)';
-    const dist=Math.abs(v-100);
-    if(dist<=10) return'rgba(74,158,26,0.85)';
-    if(dist<=20) return'rgba(99,153,34,0.75)';
-    if(dist<=35) return'rgba(240,165,0,0.8)';
-    return'rgba(226,75,74,0.85)';
-  });
+  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(74,158,26,0.85)':d<=20?'rgba(99,153,34,0.75)':d<=35?'rgba(240,165,0,0.8)':'rgba(226,75,74,0.85)';});
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const labelColor=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
+  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
   hourlyAvgChart=new Chart(document.getElementById('hourlyAvgChart'),{
-    type:'bar',
-    data:{
-      labels:blkLabels,
-      datasets:[{data:avgs,backgroundColor:colors,borderRadius:5}]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}},
-        datalabels:{
-          anchor:'end',align:'end',
-          color:labelColor,
-          font:{size:12,weight:'700'},
-          formatter:v=>v||''
-        }
-      },
-      scales:{
-        x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
-        y:{min:60,max:180,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
-      },
-      layout:{padding:{top:28}}
-    }
+    type:'bar',data:{labels:blkLabels,datasets:[{data:avgs,backgroundColor:colors,borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}},
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:12,weight:'700'},formatter:v=>v||''}},
+      scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{min:60,max:180,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}},
+      layout:{padding:{top:28}}}
   });
 }
 
@@ -569,45 +475,23 @@ function renderTDDChart(boluses,basals){
   const showTrend=document.getElementById('show-trend')?.checked;
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const labelColor=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
   const datasets=[
     {label:'Bolus',data:bolusData,backgroundColor:'rgba(55,138,221,0.75)',borderRadius:3,stack:'tdd'},
     {label:'Basal',data:basalData,backgroundColor:'rgba(127,119,221,0.75)',borderRadius:3,stack:'tdd'}
   ];
   if(showTrend&&totalData.length>2){
     const n=totalData.length,xM=(n-1)/2,yM=totalData.reduce((a,b)=>a+b,0)/n;
-    let num=0,den=0;
-    totalData.forEach((y,i)=>{num+=(i-xM)*(y-yM);den+=(i-xM)**2;});
+    let num=0,den=0;totalData.forEach((y,i)=>{num+=(i-xM)*(y-yM);den+=(i-xM)**2;});
     const slope=den?num/den:0,inter=yM-slope*xM;
     datasets.push({label:'Trend',data:totalData.map((_,i)=>Math.round((slope*i+inter)*10)/10),type:'line',borderColor:'#E24B4A',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined});
   }
   tddChart=new Chart(document.getElementById('tddChart'),{
     type:'bar',data:{labels,datasets},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        datalabels:{
-          display:ctx=>ctx.datasetIndex<2,
-          anchor:'center',align:'center',
-          color:'rgba(255,255,255,0.9)',
-          font:{size:10,weight:'600'},
-          formatter:(v,ctx)=>{
-            if(v<1.5) return'';
-            return ctx.dataset.label==='Bolus'?v+'u (B)':v+'u (b)';
-          }
-        },
-        tooltip:{callbacks:{footer:items=>{
-          const tot=Math.round(items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0)*10)/10;
-          const bp=tot>0?Math.round((items.find(i=>i.dataset.label==='Bolus')?.parsed.y||0)/tot*100):0;
-          return`TDD: ${tot}u · Bolus ${bp}% · Basal ${100-bp}%`;
-        }}}
-      },
-      scales:{
-        x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},
-        y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}
-      }
-    }
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        datalabels:{display:ctx=>ctx.datasetIndex<2,anchor:'center',align:'center',color:'rgba(255,255,255,0.9)',font:{size:10,weight:'600'},formatter:(v,ctx)=>{if(v<1.5)return'';return ctx.dataset.label==='Bolus'?v+'u':v+'u';}},
+        tooltip:{callbacks:{footer:items=>{const tot=Math.round(items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0)*10)/10;const bp=tot>0?Math.round((items.find(i=>i.dataset.label==='Bolus')?.parsed.y||0)/tot*100):0;return`TDD: ${tot}u · Bolus ${bp}% · Basal ${100-bp}%`;}}}},
+      scales:{x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}}}
   });
 }
 
@@ -618,29 +502,124 @@ function renderHourlyLows(cgm){
   const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const labelColor=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
+  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
   hourlyLowChart=new Chart(document.getElementById('hourlyLowChart'),{
-    type:'bar',
-    data:{labels,datasets:[{data:hours,backgroundColor:'rgba(226,75,74,0.75)',borderRadius:4}]},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings below 70'}},
-        datalabels:{
-          anchor:'end',align:'end',
-          color:labelColor,
-          font:{size:10,weight:'600'},
-          formatter:v=>v>0?v:''
-        }
-      },
-      scales:{
-        x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},
-        y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}
-      },
-      layout:{padding:{top:22}}
-    }
+    type:'bar',data:{labels,datasets:[{data:hours,backgroundColor:'rgba(226,75,74,0.75)',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings <70'}},
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:10,weight:'600'},formatter:v=>v>0?v:''}},
+      scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}},
+      layout:{padding:{top:22}}}
   });
+}
+
+function renderHourlyHighs(cgm){
+  if(hourlyHighChart) hourlyHighChart.destroy();
+  const hours=Array.from({length:24},()=>0);
+  cgm.forEach(d=>{if(d.v>HIGH) hours[d.t.getHours()]++;});
+  const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
+  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
+  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
+  hourlyHighChart=new Chart(document.getElementById('hourlyHighChart'),{
+    type:'bar',data:{labels,datasets:[{data:hours,backgroundColor:'rgba(240,165,0,0.75)',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings >150'}},
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:10,weight:'600'},formatter:v=>v>0?v:''}},
+      scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}},
+      layout:{padding:{top:22}}}
+  });
+}
+
+function renderOvernightVsDaytime(cgm){
+  const overnight=cgm.filter(d=>{const h=d.t.getHours();return h>=22||h<6;});
+  const daytime=cgm.filter(d=>{const h=d.t.getHours();return h>=6&&h<22;});
+  function stats(arr){
+    if(!arr.length) return null;
+    const vals=arr.map(d=>d.v);
+    const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+    const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
+    const low=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
+    const high=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
+    return{avg,tir,low,high,n:vals.length};
+  }
+  const on=stats(overnight),da=stats(daytime);
+  function row(label,s,icon){
+    if(!s) return'';
+    const tirCls=s.tir>=85?'#3B6D11':s.tir>=70?'#854F0B':'#A32D2D';
+    return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">${icon} ${label}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div><div style="font-size:10px;color:var(--text3)">Avg BG</div><div style="font-size:18px;font-weight:600">${s.avg}<span style="font-size:11px;color:var(--text3)"> mg/dL</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3)">TIR</div><div style="font-size:18px;font-weight:600;color:${tirCls}">${s.tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3)">Low%</div><div style="font-size:18px;font-weight:600;color:#A32D2D">${s.low}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3)">High%</div><div style="font-size:18px;font-weight:600;color:#854F0B">${s.high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+      </div>
+    </div>`;
+  }
+  document.getElementById('overnight-display').innerHTML=row('Overnight (10pm–6am)',on,'🌙')+row('Daytime (6am–10pm)',da,'☀️');
+}
+
+function renderPostMeal(cgm){
+  const lunch=cgm.filter(d=>{const h=d.t.getHours();return h>=12&&h<14;});
+  const dinner=cgm.filter(d=>{const h=d.t.getHours();return h>=18&&h<20;});
+  function stats(arr,label){
+    if(!arr.length) return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;color:var(--text3);font-size:13px">No data for ${label}</div>`;
+    const vals=arr.map(d=>d.v);
+    const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+    const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
+    const high=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
+    const peak=Math.max(...vals);
+    const tirCls=tir>=85?'#3B6D11':tir>=70?'#854F0B':'#A32D2D';
+    return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">${label}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div><div style="font-size:10px;color:var(--text3)">Avg</div><div style="font-size:18px;font-weight:600">${avg}<span style="font-size:11px;color:var(--text3)"> mg/dL</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3)">TIR</div><div style="font-size:18px;font-weight:600;color:${tirCls}">${tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3)">High%</div><div style="font-size:18px;font-weight:600;color:#854F0B">${high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3)">Peak</div><div style="font-size:18px;font-weight:600;color:${peak>HIGH?'#854F0B':'#3B6D11'}">${peak}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
+      </div>
+    </div>`;
+  }
+  document.getElementById('postmeal-display').innerHTML=stats(lunch,'Lunch window (12p–2p)')+stats(dinner,'Dinner window (6p–8p)');
+}
+
+function renderDayOfWeek(cgm,boluses,basals){
+  const dowData={};
+  cgm.forEach(d=>{
+    const dow=d.t.getDay();
+    if(!dowData[dow]) dowData[dow]={vals:[],bolus:0,basal:0};
+    dowData[dow].vals.push(d.v);
+  });
+  boluses.forEach(b=>{const dow=b.t.getDay();if(dowData[dow]) dowData[dow].bolus+=b.units;});
+  basals.forEach(b=>{const dow=b.t.getDay();if(dowData[dow]) dowData[dow].basal+=b.delivered;});
+  const rows=Object.entries(dowData).map(([dow,d])=>{
+    const avg=Math.round(d.vals.reduce((a,b)=>a+b,0)/d.vals.length);
+    const tir=Math.round(d.vals.filter(v=>v>=LOW&&v<=HIGH).length/d.vals.length*100);
+    const days=Math.max(1,Math.round(d.vals.length/(288/currentDays)));
+    const tdd=Math.round((d.bolus+d.basal)/Math.max(1,days)*10)/10;
+    return{dow:parseInt(dow),name:DAYS_FULL[dow],avg,tir,tdd,n:d.vals.length};
+  }).sort((a,b)=>b.tir-a.tir);
+  const rankColors=['#4a9e1a','#639922','#888780','#F0A500','#E24B4A','#E24B4A','#c81c1c'];
+  const tableRows=rows.map((r,i)=>{
+    const tirCls=r.tir>=85?'color:#3B6D11;font-weight:700':r.tir>=70?'color:#854F0B;font-weight:600':'color:#A32D2D;font-weight:600';
+    const avgCls=r.avg<=110?'color:#3B6D11':r.avg<=130?'':'color:#854F0B';
+    return`<tr>
+      <td><span class="rank-badge" style="background:${rankColors[i]};color:#fff">${i+1}</span></td>
+      <td style="font-weight:500">${r.name}</td>
+      <td style="${avgCls}">${r.avg} mg/dL</td>
+      <td style="${tirCls}">${r.tir}%</td>
+      <td>${r.tdd} u</td>
+      <td style="color:var(--text3);font-size:12px">${r.n} readings</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('dow-display').innerHTML=`
+    <table class="dow-table">
+      <thead><tr><th>Rank</th><th>Day</th><th>Avg BG</th><th>TIR</th><th>Avg TDD</th><th>Readings</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px">Ranked best to worst by TIR. Requires multiple weeks of data for meaningful patterns.</div>
+  `;
 }
 
 function renderSensitivityChart(boluses,basals){
@@ -650,30 +629,118 @@ function renderSensitivityChart(boluses,basals){
   basals.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].basal+=b.delivered;});
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
   const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*100)/100);
-  const rolling7=tddKgData.map((_,i)=>{
-    const w=tddKgData.slice(Math.max(0,i-6),i+1);
-    return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;
-  });
+  const rolling7=tddKgData.map((_,i)=>{const w=tddKgData.slice(Math.max(0,i-6),i+1);return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;});
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   sensitivityChart=new Chart(document.getElementById('sensitivityChart'),{
     type:'line',
-    data:{
-      labels,
-      datasets:[
-        {label:'Daily',data:tddKgData,borderColor:'rgba(29,158,117,0.4)',borderWidth:1,pointRadius:2,pointBackgroundColor:'rgba(29,158,117,0.4)',tension:0.2,fill:false},
-        {label:'7d avg',data:rolling7,borderColor:'#1D9E75',borderWidth:2,borderDash:[4,4],pointRadius:0,tension:0.3,fill:false}
-      ]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
+    data:{labels,datasets:[
+      {label:'Daily',data:tddKgData,borderColor:'rgba(29,158,117,0.4)',borderWidth:1,pointRadius:2,pointBackgroundColor:'rgba(29,158,117,0.4)',tension:0.2,fill:false},
+      {label:'7d avg',data:rolling7,borderColor:'#1D9E75',borderWidth:2,borderDash:[4,4],pointRadius:0,tension:0.3,fill:false}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},datalabels:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.parsed.y+' u/kg'}}},
-      scales:{
-        x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},
-        y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
-      }
-    }
+      scales:{x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}}}
   });
+}
+
+function renderInsights(cgm,boluses,basals){
+  const vals=cgm.map(d=>d.v);
+  const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  const sd=Math.round(Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/vals.length));
+  const cv=Math.round(sd/avg*100);
+  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
+  const lowPct=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
+  const highPct=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
+  const gmi=Math.round((3.31+0.02392*avg)*100)/100;
+  const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
+  const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
+  const tdd=Math.round((totalBolus+totalBasal)/currentDays*10)/10;
+  const tddKg=Math.round(tdd/WEIGHT_KG*100)/100;
+  const totalT=totalBolus+totalBasal;
+  const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
+  const pBasal=100-pBolus;
+  const hours=Array.from({length:24},()=>({low:0,high:0}));
+  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()].low++;if(d.v>HIGH) hours[d.t.getHours()].high++;});
+  const maxLowH=hours.map(h=>h.low).indexOf(Math.max(...hours.map(h=>h.low)));
+  const maxLowC=hours[maxLowH].low;
+  const maxHighH=hours.map(h=>h.high).indexOf(Math.max(...hours.map(h=>h.high)));
+  const maxHighC=hours[maxHighH].high;
+  const hl=h=>h===0?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
+  const blocks=Array.from({length:8},()=>[]);
+  cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
+  const blockAvgs=blocks.map(b=>b.length?Math.round(b.reduce((a,c)=>a+c,0)/b.length):null);
+  const blockNames=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
+  const highBlock=blockAvgs.reduce((best,v,i)=>v!==null&&(best===-1||v>blockAvgs[best])?i:best,-1);
+  const overnight=cgm.filter(d=>{const h=d.t.getHours();return h>=22||h<6;});
+  const daytime=cgm.filter(d=>{const h=d.t.getHours();return h>=6&&h<22;});
+  const onTIR=overnight.length?Math.round(overnight.filter(d=>d.v>=LOW&&d.v<=HIGH).length/overnight.length*100):null;
+  const dayTIR=daytime.length?Math.round(daytime.filter(d=>d.v>=LOW&&d.v<=HIGH).length/daytime.length*100):null;
+  const dayMap={};
+  [...boluses,...basals].forEach(b=>{const k=dayKey(b.t);dayMap[k]=dayMap[k]||{bolus:0,basal:0};if(b.units) dayMap[k].bolus+=b.units;if(b.delivered) dayMap[k].basal+=b.delivered;});
+  const dailyTDDs=Object.values(dayMap).map(d=>d.bolus+d.basal);
+  let tddTrend=0;
+  if(dailyTDDs.length>=3){const mid=Math.floor(dailyTDDs.length/2);const f=dailyTDDs.slice(0,mid).reduce((a,b)=>a+b,0)/mid;const l=dailyTDDs.slice(mid).reduce((a,b)=>a+b,0)/(dailyTDDs.length-mid);tddTrend=l-f;}
+
+  const items=[];
+
+  if(tir>=85) items.push({cls:'green',icon:'✓',text:`TIR ${tir}% — elite level`,sub:'Above the 85% elite threshold. Top-performing closed-loop users typically sustain 85–92%.'});
+  else if(tir>=70) items.push({cls:'amber',icon:'!',text:`TIR ${tir}% — meets standard goal, room for elite`,sub:'Clinical target is >70%. Elite target is >85%. Analyze 3-hour blocks and post-meal windows to find where the remaining losses occur.'});
+  else items.push({cls:'red',icon:'!',text:`TIR ${tir}% — below clinical target`,sub:'Goal is >70%. Significant opportunity to improve. Start with the overnight and post-meal sections.'});
+
+  if(cv<=25) items.push({cls:'green',icon:'✓',text:`CV ${cv}% — exceptional stability`,sub:'Below 25% is elite-level glucose variability. Reduces hypoglycemia risk even with aggressive targets.'});
+  else if(cv<=36) items.push({cls:'amber',icon:'!',text:`CV ${cv}% — within standard but above elite`,sub:'Standard target is ≤36%. Elite performers achieve ≤25%. High CV increases hypoglycemia risk and worsens TIR even with good averages.'});
+  else items.push({cls:'red',icon:'!',text:`CV ${cv}% — above target`,sub:'CV >36% indicates high variability. Prioritize reducing swings before chasing lower average BG.'});
+
+  if(gmi<6.5) items.push({cls:'green',icon:'✓',text:`GMI ${gmi}% — elite range`,sub:'Below 6.5% GMI indicates outstanding glucose management for T1D on a closed loop.'});
+  else if(gmi<7) items.push({cls:'amber',icon:'!',text:`GMI ${gmi}% — good, approaching elite`,sub:'Elite target is <6.5%. Each 0.1% GMI reduction requires roughly 5–8 mg/dL lower average BG.'});
+  else items.push({cls:'red',icon:'!',text:`GMI ${gmi}% — above elite target`,sub:'Target GMI <7% (standard) and <6.5% (elite). Focus on post-meal and overnight control.'});
+
+  if(lowPct<1) items.push({cls:'green',icon:'✓',text:`Low burden ${lowPct}% — excellent`,sub:'Below 1% is elite. Sustained low burden this low while maintaining good TIR indicates well-balanced Loop settings.'});
+  else if(lowPct<2) items.push({cls:'green',icon:'✓',text:`Low burden ${lowPct}% — meets elite target`,sub:'Elite target is <2%. Continue monitoring for clustering patterns by hour.'});
+  else if(lowPct<4) items.push({cls:'amber',icon:'!',text:`Low burden ${lowPct}% — monitor`,sub:'Standard target is <4%, elite is <2%. Check the low events by hour chart for recurring patterns.'});
+  else items.push({cls:'red',icon:'!',text:`Low burden ${lowPct}% — above target`,sub:'Above the 4% clinical threshold. Review overnight basal rates and activity timing.'});
+
+  if(maxLowC>=3) items.push({cls:'amber',icon:'!',text:`Recurring lows at ${hl(maxLowH)} (${maxLowC} events)`,sub:'Pattern of lows at this hour over the selected period. Consider targeted basal adjustment or reviewing carb/activity timing around this window.'});
+  if(maxHighC>=5) items.push({cls:'amber',icon:'!',text:`Recurring highs at ${hl(maxHighH)} (${maxHighC} events)`,sub:'Consistent post-meal or sustained highs at this hour. Consider earlier pre-bolus timing or reviewing carb ratios for this meal window.'});
+
+  if(highBlock>=0&&blockAvgs[highBlock]>125) items.push({cls:'amber',icon:'!',text:`Highest avg BG in ${blockNames[highBlock]} block (${blockAvgs[highBlock]} mg/dL)`,sub:'This time block consistently runs above your ideal. If it follows a meal window, earlier pre-bolusing may help. If overnight, consider basal review.'});
+
+  if(onTIR!==null&&dayTIR!==null){
+    if(onTIR>=85&&dayTIR>=85) items.push({cls:'green',icon:'✓',text:`Strong TIR both overnight (${onTIR}%) and daytime (${dayTIR}%)`,sub:'Consistent control across all periods is the hallmark of elite closed-loop management.'});
+    else if(onTIR<dayTIR-15) items.push({cls:'amber',icon:'!',text:`Overnight TIR (${onTIR}%) lags daytime (${dayTIR}%)`,sub:'Overnight control is the biggest lever for many T1D looper. Review overnight basal profile and consider whether dawn phenomenon is a factor.'});
+    else if(dayTIR<onTIR-15) items.push({cls:'amber',icon:'!',text:`Daytime TIR (${dayTIR}%) lags overnight (${onTIR}%)`,sub:'Post-meal spikes are likely the main driver. Consider carb ratio adjustments, pre-bolus timing, and reviewing meal-time insulin activity curves.'});
+  }
+
+  if(pBolus>60) items.push({cls:'amber',icon:'!',text:`Bolus-heavy split (${pBolus}% bolus / ${pBasal}% basal)`,sub:'Optimal for closed loop is typically 50–55% bolus. Higher bolus % may indicate frequent correction doses, undertreated basal, or aggressive meal dosing.'});
+  else if(pBasal>60) items.push({cls:'amber',icon:'!',text:`Basal-heavy split (${pBasal}% basal / ${pBolus}% bolus)`,sub:'Loop delivering significant automated basal. May indicate scheduled basal set higher than needed, with Loop over-correcting upward.'});
+  else items.push({cls:'green',icon:'✓',text:`Balanced split (${pBolus}% bolus / ${pBasal}% basal)`,sub:'Near the optimal 50–55% bolus ratio for closed-loop delivery. Indicates well-calibrated basal and meal dosing.'});
+
+  if(tddKg<=0.35) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — excellent insulin sensitivity`,sub:'Below 0.35 u/kg is in the top range for T1D. Track over time to monitor for upward drift which may signal early resistance.'});
+  else if(tddKg<=0.45) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — good sensitivity`,sub:'Within the 0.35–0.45 u/kg range seen in well-controlled T1D. Continue tracking trend over 30–60 day windows.'});
+  else if(tddKg<=0.6) items.push({cls:'amber',icon:'!',text:`TDD/kg ${tddKg} u/kg — mid-normal range`,sub:'Typical T1D range is 0.4–0.6 u/kg. Values in the upper half may warrant monitoring alongside TG:HDL ratio.'});
+  else items.push({cls:'red',icon:'!',text:`TDD/kg ${tddKg} u/kg — above typical range`,sub:'Above 0.6 u/kg suggests possible insulin resistance. Cross-reference with TG:HDL and eGDR. Consider discussing with your endo.'});
+
+  if(tddTrend>2) items.push({cls:'amber',icon:'!',text:`TDD trending up ~${Math.round(tddTrend*10)/10}u over period`,sub:'Increasing insulin needs over time. Possible causes: higher carb load, reduced activity, hormonal cycle, early insulin resistance. Track alongside TDD/kg.'});
+  else if(tddTrend<-2) items.push({cls:'green',icon:'✓',text:`TDD trending down ~${Math.round(Math.abs(tddTrend)*10)/10}u over period`,sub:'Decreasing insulin needs — positive signal for improving sensitivity. Ensure this is intentional and not driven by undereating or excessive hypoglycemia.'});
+
+  const green=items.filter(i=>i.cls==='green').length;
+  const amber=items.filter(i=>i.cls==='amber').length;
+  const red=items.filter(i=>i.cls==='red').length;
+  document.getElementById('insights-summary').textContent=`${green} on target · ${amber} watch · ${red} action needed`;
+  document.getElementById('insights-body').innerHTML=items.map(i=>`
+    <div class="insight ${i.cls}">
+      <div class="insight-icon">${i.icon}</div>
+      <div><div class="insight-text">${i.text}</div><div class="insight-sub">${i.sub}</div></div>
+    </div>`).join('');
+}
+
+function toggleInsights(){
+  const body=document.getElementById('insights-body');
+  const chev=document.getElementById('insights-chevron');
+  const open=body.classList.contains('open');
+  body.classList.toggle('open');
+  chev.classList.toggle('open');
 }
 
 loadFromOneDrive();
