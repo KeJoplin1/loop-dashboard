@@ -162,27 +162,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
-      <div style="display:flex;gap:12px;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
-      </div>
-      <div style="position:relative;width:100%;height:200px">
-        <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
-      </div>
-    </div>
-
     <div class="two-col">
       <div class="card">
-        <div class="card-title">Low events by hour (&lt;70)</div>
+        <div class="card-title">Low events by 3-hour block (&lt;70)</div>
         <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyLowChart" role="img" aria-label="Low events by hour"></canvas>
+          <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
         </div>
       </div>
       <div class="card">
-        <div class="card-title">High events by hour (&gt;150)</div>
+        <div class="card-title">High events by 3-hour block (&gt;150)</div>
         <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyHighChart" role="img" aria-label="High events by hour"></canvas>
+          <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
         </div>
       </div>
     </div>
@@ -201,6 +191,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="card">
       <div class="card-title">Day of week breakdown</div>
       <div id="dow-display"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
+      <div style="display:flex;gap:12px;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
+      </div>
+      <div style="position:relative;width:100%;height:220px">
+        <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
+      </div>
     </div>
 
     <div class="card">
@@ -475,60 +475,97 @@ function renderTDDChart(boluses,basals){
   const showTrend=document.getElementById('show-trend')?.checked;
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.85)';
   const datasets=[
     {label:'Bolus',data:bolusData,backgroundColor:'rgba(55,138,221,0.75)',borderRadius:3,stack:'tdd'},
-    {label:'Basal',data:basalData,backgroundColor:'rgba(127,119,221,0.75)',borderRadius:3,stack:'tdd'}
+    {label:'Basal',data:basalData,backgroundColor:'rgba(127,119,221,0.75)',borderRadius:3,stack:'tdd'},
+    {label:'Total',data:totalData,backgroundColor:'transparent',borderColor:'transparent',stack:'total',
+     datalabels:{display:true,anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v+'u'}}
   ];
   if(showTrend&&totalData.length>2){
     const n=totalData.length,xM=(n-1)/2,yM=totalData.reduce((a,b)=>a+b,0)/n;
     let num=0,den=0;totalData.forEach((y,i)=>{num+=(i-xM)*(y-yM);den+=(i-xM)**2;});
     const slope=den?num/den:0,inter=yM-slope*xM;
-    datasets.push({label:'Trend',data:totalData.map((_,i)=>Math.round((slope*i+inter)*10)/10),type:'line',borderColor:'#E24B4A',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined});
+    datasets.push({label:'Trend',data:totalData.map((_,i)=>Math.round((slope*i+inter)*10)/10),type:'line',borderColor:'#E24B4A',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined,datalabels:{display:false}});
   }
   tddChart=new Chart(document.getElementById('tddChart'),{
     type:'bar',data:{labels,datasets},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},
-        datalabels:{display:ctx=>ctx.datasetIndex<2,anchor:'center',align:'center',color:'rgba(255,255,255,0.9)',font:{size:10,weight:'600'},formatter:(v,ctx)=>{if(v<1.5)return'';return ctx.dataset.label==='Bolus'?v+'u':v+'u';}},
-        tooltip:{callbacks:{footer:items=>{const tot=Math.round(items.filter(i=>i.dataset.label!=='Trend').reduce((s,i)=>s+i.parsed.y,0)*10)/10;const bp=tot>0?Math.round((items.find(i=>i.dataset.label==='Bolus')?.parsed.y||0)/tot*100):0;return`TDD: ${tot}u · Bolus ${bp}% · Basal ${100-bp}%`;}}}},
-      scales:{x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}}}
+        datalabels:{display:ctx=>ctx.datasetIndex<2,anchor:'center',align:'center',color:'rgba(255,255,255,0.9)',font:{size:10,weight:'600'},formatter:(v,ctx)=>{if(v<1.5)return'';return v+'u';}},
+        tooltip:{callbacks:{footer:items=>{const tot=Math.round(items.filter(i=>i.dataset.label==='Bolus'||i.dataset.label==='Basal').reduce((s,i)=>s+i.parsed.y,0)*10)/10;const bp=tot>0?Math.round((items.find(i=>i.dataset.label==='Bolus')?.parsed.y||0)/tot*100):0;return`TDD: ${tot}u · Bolus ${bp}% · Basal ${100-bp}%`;}}}},
+      scales:{x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}},
+      layout:{padding:{top:28}}}
   });
 }
 
 function renderHourlyLows(cgm){
   if(hourlyLowChart) hourlyLowChart.destroy();
-  const hours=Array.from({length:24},()=>0);
-  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()]++;});
-  const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
+  const blocks=Array.from({length:8},()=>0);
+  cgm.forEach(d=>{if(d.v<LOW) blocks[Math.floor(d.t.getHours()/3)]++;});
+  const maxVal=Math.max(...blocks,1);
+  const colors=blocks.map(v=>{
+    const intensity=v/maxVal;
+    const r=Math.round(180+intensity*46);
+    const g=Math.round(80-intensity*50);
+    const b=Math.round(74-intensity*30);
+    return v===0?'rgba(136,135,128,0.2)':`rgba(${r},${g},${b},0.85)`;
+  });
+  const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
   hourlyLowChart=new Chart(document.getElementById('hourlyLowChart'),{
-    type:'bar',data:{labels,datasets:[{data:hours,backgroundColor:'rgba(226,75,74,0.75)',borderRadius:4}]},
+    type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings <70'}},
-        datalabels:{anchor:'end',align:'end',color:lc,font:{size:10,weight:'600'},formatter:v=>v>0?v:''}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings <70 in block'}},
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
       scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}},
-      layout:{padding:{top:22}}}
+      layout:{padding:{top:24}}}
   });
 }
 
 function renderHourlyHighs(cgm){
   if(hourlyHighChart) hourlyHighChart.destroy();
-  const hours=Array.from({length:24},()=>0);
-  cgm.forEach(d=>{if(d.v>HIGH) hours[d.t.getHours()]++;});
-  const labels=Array.from({length:24},(_,i)=>i===0?'12a':i<12?i+'a':i===12?'12p':(i-12)+'p');
+  const blocks=Array.from({length:8},()=>0);
+  cgm.forEach(d=>{if(d.v>HIGH) blocks[Math.floor(d.t.getHours()/3)]++;});
+  const maxVal=Math.max(...blocks,1);
+  const colors=blocks.map(v=>{
+    const intensity=v/maxVal;
+    const r=Math.round(200+intensity*40);
+    const g=Math.round(140-intensity*80);
+    const b=Math.round(20-intensity*10);
+    return v===0?'rgba(136,135,128,0.2)':`rgba(${r},${g},${b},0.85)`;
+  });
+  const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
   hourlyHighChart=new Chart(document.getElementById('hourlyHighChart'),{
-    type:'bar',data:{labels,datasets:[{data:hours,backgroundColor:'rgba(240,165,0,0.75)',borderRadius:4}]},
+    type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings >150'}},
-        datalabels:{anchor:'end',align:'end',color:lc,font:{size:10,weight:'600'},formatter:v=>v>0?v:''}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings >150 in block'}},
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
       scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}},
-      layout:{padding:{top:22}}}
+      layout:{padding:{top:24}}}
   });
+}
+
+function tirBar(tir,low,high,n){
+  const inR=tir,lo=low,hi=high,vLo=0,vHi=0;
+  return`<div style="margin:10px 0 6px">
+    <div style="display:flex;height:28px;border-radius:8px;overflow:hidden">
+      <div style="width:${lo}%;background:#E24B4A;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${lo>0?'4px':'0'}">${lo>=8?lo+'%':''}</div>
+      <div style="width:${inR}%;background:#4a9e1a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${inR>0?'4px':'0'}">${inR>=8?inR+'%':''}</div>
+      <div style="width:${hi}%;background:#F0A500;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${hi>0?'4px':'0'}">${hi>=8?hi+'%':''}</div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:5px;font-size:11px">
+      <span style="color:#A32D2D">Low ${lo}%</span>
+      <span style="color:#3B6D11;font-weight:600">In range ${inR}%</span>
+      <span style="color:#854F0B">High ${hi}%</span>
+      <span style="color:var(--text3);margin-left:auto">${n} readings</span>
+    </div>
+  </div>`;
 }
 
 function renderOvernightVsDaytime(cgm){
@@ -544,81 +581,102 @@ function renderOvernightVsDaytime(cgm){
     return{avg,tir,low,high,n:vals.length};
   }
   const on=stats(overnight),da=stats(daytime);
-  function row(label,s,icon){
+  function section(label,s,icon){
     if(!s) return'';
-    const tirCls=s.tir>=85?'#3B6D11':s.tir>=70?'#854F0B':'#A32D2D';
-    return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
-      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">${icon} ${label}</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div><div style="font-size:10px;color:var(--text3)">Avg BG</div><div style="font-size:18px;font-weight:600">${s.avg}<span style="font-size:11px;color:var(--text3)"> mg/dL</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3)">TIR</div><div style="font-size:18px;font-weight:600;color:${tirCls}">${s.tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3)">Low%</div><div style="font-size:18px;font-weight:600;color:#A32D2D">${s.low}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3)">High%</div><div style="font-size:18px;font-weight:600;color:#854F0B">${s.high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+    const avgCls=s.avg<=110?'#3B6D11':s.avg<=130?'var(--text)':'#854F0B';
+    return`<div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-size:14px">${icon}</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text3)">${label}</span>
+        <span style="margin-left:auto;font-size:18px;font-weight:700;color:${avgCls}">${s.avg} <span style="font-size:11px;font-weight:400;color:var(--text3)">mg/dL avg</span></span>
       </div>
+      ${tirBar(s.tir,s.low,s.high,s.n)}
     </div>`;
   }
-  document.getElementById('overnight-display').innerHTML=row('Overnight (10pm–6am)',on,'🌙')+row('Daytime (6am–10pm)',da,'☀️');
+  document.getElementById('overnight-display').innerHTML=section('Overnight (10pm–6am)',on,'🌙')+section('Daytime (6am–10pm)',da,'☀️');
 }
 
 function renderPostMeal(cgm){
   const lunch=cgm.filter(d=>{const h=d.t.getHours();return h>=12&&h<14;});
   const dinner=cgm.filter(d=>{const h=d.t.getHours();return h>=18&&h<20;});
-  function stats(arr,label){
-    if(!arr.length) return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;color:var(--text3);font-size:13px">No data for ${label}</div>`;
+  function stats(arr,label,icon){
+    if(!arr.length) return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:10px;color:var(--text3);font-size:13px">No data for ${label}</div>`;
     const vals=arr.map(d=>d.v);
     const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
     const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
+    const low=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
     const high=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
-    const peak=Math.max(...vals);
-    const tirCls=tir>=85?'#3B6D11':tir>=70?'#854F0B':'#A32D2D';
-    return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
-      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:8px">${label}</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div><div style="font-size:10px;color:var(--text3)">Avg</div><div style="font-size:18px;font-weight:600">${avg}<span style="font-size:11px;color:var(--text3)"> mg/dL</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3)">TIR</div><div style="font-size:18px;font-weight:600;color:${tirCls}">${tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3)">High%</div><div style="font-size:18px;font-weight:600;color:#854F0B">${high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3)">Peak</div><div style="font-size:18px;font-weight:600;color:${peak>HIGH?'#854F0B':'#3B6D11'}">${peak}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
+    const sorted=vals.slice().sort((a,b)=>b-a);
+    const top10=sorted.slice(0,Math.max(1,Math.floor(sorted.length*0.1)));
+    const avgPeak=Math.round(top10.reduce((a,b)=>a+b,0)/top10.length);
+    const peakCls=avgPeak>HIGH?'#854F0B':'#3B6D11';
+    const avgCls=avg<=110?'#3B6D11':avg<=130?'var(--text)':'#854F0B';
+    return`<div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-size:14px">${icon}</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text3)">${label}</span>
+        <span style="margin-left:auto;font-size:16px;font-weight:700;color:${avgCls}">${avg} <span style="font-size:11px;font-weight:400;color:var(--text3)">mg/dL avg</span></span>
+      </div>
+      ${tirBar(tir,low,high,vals.length)}
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--text3)">
+        <span>Avg peak (top 10%)</span>
+        <span style="font-weight:700;color:${peakCls};margin-left:auto">${avgPeak} mg/dL</span>
       </div>
     </div>`;
   }
-  document.getElementById('postmeal-display').innerHTML=stats(lunch,'Lunch window (12p–2p)')+stats(dinner,'Dinner window (6p–8p)');
+  document.getElementById('postmeal-display').innerHTML=stats(lunch,'Lunch window (12p–2p)','🍽️')+stats(dinner,'Dinner window (6p–8p)','🍽️');
 }
 
 function renderDayOfWeek(cgm,boluses,basals){
   const dowData={};
   cgm.forEach(d=>{
     const dow=d.t.getDay();
-    if(!dowData[dow]) dowData[dow]={vals:[],bolus:0,basal:0};
+    if(!dowData[dow]) dowData[dow]={vals:[],bolus:0,basal:0,days:new Set()};
     dowData[dow].vals.push(d.v);
+    dowData[dow].days.add(d.t.toLocaleDateString());
   });
   boluses.forEach(b=>{const dow=b.t.getDay();if(dowData[dow]) dowData[dow].bolus+=b.units;});
   basals.forEach(b=>{const dow=b.t.getDay();if(dowData[dow]) dowData[dow].basal+=b.delivered;});
   const rows=Object.entries(dowData).map(([dow,d])=>{
     const avg=Math.round(d.vals.reduce((a,b)=>a+b,0)/d.vals.length);
     const tir=Math.round(d.vals.filter(v=>v>=LOW&&v<=HIGH).length/d.vals.length*100);
-    const days=Math.max(1,Math.round(d.vals.length/(288/currentDays)));
-    const tdd=Math.round((d.bolus+d.basal)/Math.max(1,days)*10)/10;
-    return{dow:parseInt(dow),name:DAYS_FULL[dow],avg,tir,tdd,n:d.vals.length};
+    const low=Math.round(d.vals.filter(v=>v<LOW).length/d.vals.length*100);
+    const high=Math.round(d.vals.filter(v=>v>HIGH).length/d.vals.length*100);
+    const numDays=Math.max(1,d.days.size);
+    const tdd=Math.round((d.bolus+d.basal)/numDays*10)/10;
+    return{dow:parseInt(dow),name:DAYS_FULL[dow],short:DAYS_SHORT[dow],avg,tir,low,high,tdd,n:d.vals.length,numDays};
   }).sort((a,b)=>b.tir-a.tir);
-  const rankColors=['#4a9e1a','#639922','#888780','#F0A500','#E24B4A','#E24B4A','#c81c1c'];
-  const tableRows=rows.map((r,i)=>{
-    const tirCls=r.tir>=85?'color:#3B6D11;font-weight:700':r.tir>=70?'color:#854F0B;font-weight:600':'color:#A32D2D;font-weight:600';
-    const avgCls=r.avg<=110?'color:#3B6D11':r.avg<=130?'':'color:#854F0B';
-    return`<tr>
-      <td><span class="rank-badge" style="background:${rankColors[i]};color:#fff">${i+1}</span></td>
-      <td style="font-weight:500">${r.name}</td>
-      <td style="${avgCls}">${r.avg} mg/dL</td>
-      <td style="${tirCls}">${r.tir}%</td>
-      <td>${r.tdd} u</td>
-      <td style="color:var(--text3);font-size:12px">${r.n} readings</td>
-    </tr>`;
+
+  const rankColors=['#4a9e1a','#5a8a20','#888780','#F0A500','#E24B4A','#c81c1c','#7f1d1d'];
+  const tirBg=t=>t>=85?'rgba(74,158,26,0.12)':t>=70?'rgba(240,165,0,0.12)':'rgba(226,75,74,0.12)';
+  const tirBorder=t=>t>=85?'#4a9e1a':t>=70?'#F0A500':'#E24B4A';
+
+  const cards=rows.map((r,i)=>{
+    const avgCls=r.avg<=110?'#3B6D11':r.avg<=130?'var(--text)':'#854F0B';
+    return`<div style="background:${tirBg(r.tir)};border:1px solid ${tirBorder(r.tir)};border-radius:var(--radius);padding:14px;position:relative">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:${rankColors[i]};color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</span>
+          <span style="font-size:15px;font-weight:600">${r.name}</span>
+        </div>
+        <span style="font-size:11px;color:var(--text3)">${r.numDays} ${r.numDays===1?'day':'days'}</span>
+      </div>
+      <div style="display:flex;height:20px;border-radius:6px;overflow:hidden;margin-bottom:6px">
+        <div style="width:${r.low}%;background:#E24B4A;min-width:${r.low>0?'3px':'0'}"></div>
+        <div style="width:${r.tir}%;background:#4a9e1a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">${r.tir>=15?r.tir+'%':''}</div>
+        <div style="width:${r.high}%;background:#F0A500;min-width:${r.high>0?'3px':'0'}"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px">
+        <span style="color:var(--text3)">TIR <span style="font-weight:700;color:${tirBorder(r.tir)}">${r.tir}%</span></span>
+        <span style="color:var(--text3)">Avg <span style="font-weight:700;color:${avgCls}">${r.avg}</span></span>
+        <span style="color:var(--text3)">TDD <span style="font-weight:700;color:var(--text)">${r.tdd}u</span></span>
+      </div>
+    </div>`;
   }).join('');
+
   document.getElementById('dow-display').innerHTML=`
-    <table class="dow-table">
-      <thead><tr><th>Rank</th><th>Day</th><th>Avg BG</th><th>TIR</th><th>Avg TDD</th><th>Readings</th></tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table>
-    <div style="font-size:11px;color:var(--text3);margin-top:10px">Ranked best to worst by TIR. Requires multiple weeks of data for meaningful patterns.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">${cards}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px">Ranked best → worst by TIR. Requires multiple weeks for meaningful patterns.</div>
   `;
 }
 
