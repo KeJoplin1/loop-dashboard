@@ -128,12 +128,21 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
   <div id="dashboard" style="display:none">
 
-    <div class="range-tabs">
-      <button class="range-tab active" onclick="setRange(3,this)">3d</button>
-      <button class="range-tab" onclick="setRange(7,this)">7d</button>
-      <button class="range-tab" onclick="setRange(14,this)">14d</button>
-      <button class="range-tab" onclick="setRange(30,this)">30d</button>
-      <button class="range-tab" onclick="setRange(60,this)">60d</button>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <div class="range-tabs" style="margin-bottom:0">
+        <button class="range-tab active" onclick="setRange(3,this)">3d</button>
+        <button class="range-tab" onclick="setRange(7,this)">7d</button>
+        <button class="range-tab" onclick="setRange(14,this)">14d</button>
+        <button class="range-tab" onclick="setRange(30,this)">30d</button>
+        <button class="range-tab" onclick="setRange(60,this)">60d</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text3)">Custom:</span>
+        <input type="date" id="date-from" style="font-size:12px;padding:5px 8px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)"/>
+        <span style="font-size:12px;color:var(--text3)">to</span>
+        <input type="date" id="date-to" style="font-size:12px;padding:5px 8px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)"/>
+        <button class="btn" onclick="applyCustomRange()">Apply</button>
+      </div>
     </div>
 
     <div class="metrics-wrap" id="metrics-wrap"></div>
@@ -298,19 +307,40 @@ function parseAndRender(csvText){
   if(!allCGM.length){showError('No CGM data found.');document.getElementById('loading-state').style.display='none';return;}
   document.getElementById('status-dot').className='status-dot live';
   document.getElementById('status-text').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const today=new Date();
+  const weekAgo=new Date(Date.now()-7*86400000);
+  document.getElementById('date-to').value=today.toISOString().split('T')[0];
+  document.getElementById('date-from').value=weekAgo.toISOString().split('T')[0];
   document.getElementById('loading-state').style.display='none';
   document.getElementById('dashboard').style.display='block';
   renderAll();
 }
 
+let customFrom=null,customTo=null;
+
 function setRange(days,btn){
   currentDays=days;
+  customFrom=null;customTo=null;
   document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
   renderAll();
 }
 
+function applyCustomRange(){
+  const from=document.getElementById('date-from').value;
+  const to=document.getElementById('date-to').value;
+  if(!from||!to){showError('Please select both a start and end date.');return;}
+  customFrom=new Date(from+'T00:00:00');
+  customTo=new Date(to+'T23:59:59');
+  if(customFrom>customTo){showError('Start date must be before end date.');return;}
+  document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
+  const diffDays=Math.round((customTo-customFrom)/86400000);
+  currentDays=diffDays+1;
+  renderAll();
+}
+
 function filterByDays(arr,days){
+  if(customFrom&&customTo) return arr.filter(d=>d.t>=customFrom&&d.t<=customTo);
   const cutoff=Date.now()-days*86400000;
   return arr.filter(d=>d.t>=cutoff);
 }
