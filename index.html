@@ -9,90 +9,92 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f7f7f5;--surface:#fff;--surface2:#f1f0ec;--border:rgba(0,0,0,0.1);
-  --text:#1a1a18;--text2:#5f5e5a;--text3:#888780;
-  --green:#3B6D11;--red:#A32D2D;--amber:#854F0B;--blue:#185FA5;
-  --radius:10px;--radius-sm:6px;
+  --bg:#0c0c0e;--surface:#141418;--surface2:#1c1c22;--border:rgba(255,255,255,0.07);
+  --text:#f0f0f0;--text2:#a0a0a8;--text3:#606068;
+  --accent:#00d4a0;--accent-dim:rgba(0,212,160,0.12);
+  --green:#00d4a0;--green-dim:rgba(0,212,160,0.15);
+  --red:#ff4d6d;--red-dim:rgba(255,77,109,0.12);
+  --amber:#ffb347;--amber-dim:rgba(255,179,71,0.12);
+  --blue:#4d9fff;--blue-dim:rgba(77,159,255,0.12);
+  --purple:#a78bfa;
+  --radius:14px;--radius-sm:8px;--radius-xs:6px;
 }
-@media(prefers-color-scheme:dark){:root{
-  --bg:#1a1a18;--surface:#242422;--surface2:#2c2c2a;
-  --border:rgba(255,255,255,0.1);--text:#f1f0ec;--text2:#b4b2a9;--text3:#888780;
-}}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;min-height:100vh}
-.app{max-width:1100px;margin:0 auto;padding:24px 20px}
-.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
-.topbar h1{font-size:20px;font-weight:600}
-.topbar p{font-size:12px;color:var(--text3);margin-top:2px}
+.app{max-width:1100px;margin:0 auto;padding:28px 20px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.topbar h1{font-size:22px;font-weight:700;letter-spacing:-0.5px;color:var(--text)}
+.topbar p{font-size:12px;color:var(--text3);margin-top:3px}
 .topbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:0.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-weight:500;cursor:pointer;background:var(--surface2);color:var(--text)}
-.btn:hover{opacity:0.8}
-.btn.primary{background:var(--blue);color:#fff;border-color:transparent}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;background:var(--surface2);color:var(--text2);transition:all 0.15s}
+.btn:hover{background:var(--surface);color:var(--text);border-color:rgba(255,255,255,0.15)}
+.btn.primary{background:var(--accent);color:#000;border-color:transparent;font-weight:600}
+.btn.primary:hover{opacity:0.9}
 #fileInput{display:none}
-.status-dot{width:8px;height:8px;border-radius:50%;background:var(--text3)}
-.status-dot.live{background:#639922;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-.range-tabs{display:flex;gap:4px;background:var(--surface2);border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content}
-.range-tab{padding:6px 14px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:none}
-.range-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
-.metrics-wrap{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
-.metrics-section{flex:1;min-width:0;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.metrics-section-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;border-bottom:0.5px solid var(--border)}
-.metrics-section-label.gluc{color:#185FA5;background:rgba(55,138,221,0.07);border-left:3px solid #378ADD}
-.metrics-section-label.ins{color:#534AB7;background:rgba(127,119,221,0.07);border-left:3px solid #7F77DD}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
+.status-dot.live{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.range-tabs{display:flex;gap:2px;background:var(--surface2);border-radius:20px;padding:3px;margin-bottom:24px;width:fit-content}
+.range-tab{padding:6px 16px;border-radius:18px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:none;transition:all 0.15s}
+.range-tab.active{background:var(--surface);color:var(--text);font-weight:600}
+.range-tabs-row{display:flex;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+.custom-range{display:flex;align-items:center;gap:8px}
+.custom-range span{font-size:12px;color:var(--text3)}
+.custom-range input[type=date]{font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:20px;background:var(--surface2);color:var(--text2);outline:none}
+.custom-range input[type=date]:focus{border-color:var(--accent)}
+.metrics-wrap{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.metrics-section{flex:1;min-width:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.metrics-section-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:8px 16px;border-bottom:1px solid var(--border)}
+.metrics-section-label.gluc{color:var(--accent);background:var(--accent-dim);border-left:2px solid var(--accent)}
+.metrics-section-label.ins{color:var(--purple);background:rgba(167,139,250,0.1);border-left:2px solid var(--purple)}
 .metrics-row{display:flex;flex-wrap:wrap}
-.metric-cell{flex:1;min-width:90px;padding:12px 14px;border-right:0.5px solid var(--border);border-bottom:0.5px solid var(--border)}
+.metric-cell{flex:1;min-width:90px;padding:14px 16px;border-right:1px solid var(--border)}
 .metric-cell:last-child{border-right:none}
-.metric-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
-.metric-val{font-size:22px;font-weight:600;color:var(--text);line-height:1}
-.metric-val .unit{font-size:11px;font-weight:400;color:var(--text3)}
-.metric-val.good{color:var(--green)}
+.metric-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:500}
+.metric-val{font-size:24px;font-weight:700;color:var(--text);line-height:1;letter-spacing:-0.5px}
+.metric-val .unit{font-size:11px;font-weight:400;color:var(--text3);letter-spacing:0}
+.metric-val.good{color:var(--accent)}
 .metric-val.warn{color:var(--amber)}
 .metric-val.bad{color:var(--red)}
-.card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
-.card-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
-.two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px}
-.three-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px}
-.tir-bar-wrap{display:flex;height:36px;border-radius:10px;overflow:hidden;margin-bottom:12px}
-.tir-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,0.95);overflow:hidden;white-space:nowrap;min-width:0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px}
+.card-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px}
+.two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px}
+.three-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
+.tir-bar-wrap{display:flex;height:38px;border-radius:12px;overflow:hidden;margin-bottom:14px}
+.tir-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,0.9);overflow:hidden;white-space:nowrap;min-width:0}
 .tir-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
-.dow-table{width:100%;border-collapse:collapse;font-size:13px}
-.dow-table th{font-size:10px;font-weight:600;color:var(--text3);text-align:left;padding:6px 10px;border-bottom:0.5px solid var(--border);text-transform:uppercase;letter-spacing:.05em}
-.dow-table td{padding:9px 10px;border-bottom:0.5px solid var(--border)}
-.dow-table tr:last-child td{border-bottom:none}
-.dow-table tr:hover td{background:var(--surface2)}
-.rank-badge{display:inline-block;width:18px;height:18px;border-radius:50%;font-size:10px;font-weight:700;text-align:center;line-height:18px}
 .insights-dropdown{margin-bottom:16px}
-.insights-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer;user-select:none}
-.insights-header-left{display:flex;align-items:center;gap:10px}
+.insights-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;user-select:none;transition:border-color 0.15s}
+.insights-header:hover{border-color:rgba(255,255,255,0.15)}
+.insights-header-left{display:flex;align-items:center;gap:12px}
 .insights-title{font-size:13px;font-weight:600;color:var(--text)}
 .insights-summary{font-size:12px;color:var(--text3)}
-.insights-chevron{font-size:12px;color:var(--text3);transition:transform 0.25s}
+.insights-chevron{font-size:11px;color:var(--text3);transition:transform 0.25s}
 .insights-chevron.open{transform:rotate(180deg)}
-.insights-body{display:none;border:0.5px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:16px;background:var(--surface)}
+.insights-body{display:none;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:16px;background:var(--surface)}
 .insights-body.open{display:block}
-.insight{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-radius:var(--radius-sm);border-left:3px solid;margin-bottom:8px}
+.insight{display:flex;align-items:flex-start;gap:12px;padding:11px 14px;border-radius:var(--radius-sm);border-left:2px solid;margin-bottom:8px}
 .insight:last-child{margin-bottom:0}
-.insight.green{background:rgba(74,158,26,0.08);border-color:#4a9e1a}
-.insight.amber{background:rgba(240,165,0,0.08);border-color:#F0A500}
-.insight.red{background:rgba(226,75,74,0.08);border-color:#E24B4A}
-.insight-icon{font-size:14px;margin-top:1px;flex-shrink:0;font-weight:700}
+.insight.green{background:var(--green-dim);border-color:var(--accent)}
+.insight.amber{background:var(--amber-dim);border-color:var(--amber)}
+.insight.red{background:var(--red-dim);border-color:var(--red)}
+.insight-icon{font-size:13px;margin-top:1px;flex-shrink:0;font-weight:700}
 .insight-text{font-size:13px;color:var(--text);font-weight:600}
-.insight-sub{font-size:11px;color:var(--text3);margin-top:2px;line-height:1.5}
-.split-mini{display:inline-flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;width:60px;vertical-align:middle;margin-left:6px}
-.loading-state{text-align:center;padding:4rem 2rem;color:var(--text3)}
-.spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+.insight-sub{font-size:11px;color:var(--text2);margin-top:3px;line-height:1.55}
+.loading-state{text-align:center;padding:5rem 2rem;color:var(--text3)}
+.spinner{width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.error-state{background:#FCEBEB;border:0.5px solid #F09595;border-radius:var(--radius);padding:16px;color:var(--red);font-size:13px;margin-bottom:16px}
-.upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;cursor:pointer}
-.upload-zone h3{font-size:16px;font-weight:500;margin-bottom:8px}
+.error-state{background:var(--red-dim);border:1px solid rgba(255,77,109,0.3);border-radius:var(--radius-sm);padding:14px 16px;color:var(--red);font-size:13px;margin-bottom:16px}
+.upload-zone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:4rem 2rem;text-align:center;cursor:pointer;transition:border-color 0.15s}
+.upload-zone:hover{border-color:var(--accent)}
+.upload-zone h3{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text)}
 .upload-zone p{font-size:13px;color:var(--text3)}
 @media print{
-  .topbar-right,.range-tabs{display:none!important}
+  .topbar-right,.range-tabs-row{display:none!important}
   .app{padding:8px}
-  .card,.metrics-wrap,.dow-table{break-inside:avoid}
+  .card,.metrics-wrap{break-inside:avoid}
   body{background:#fff!important;color:#000!important}
   .insights-header{display:none}
-  .insights-body{display:block!important;border:0.5px solid #ccc;border-radius:var(--radius);page-break-before:always;padding:20px}
+  .insights-body{display:block!important;border:1px solid #ccc;border-radius:var(--radius);page-break-before:always;padding:20px}
   .insight{break-inside:avoid}
 }
 </style>
@@ -128,7 +130,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
   <div id="dashboard" style="display:none">
 
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <div class="range-tabs-row">
       <div class="range-tabs" style="margin-bottom:0">
         <button class="range-tab active" onclick="setRange(3,this)">3d</button>
         <button class="range-tab" onclick="setRange(7,this)">7d</button>
@@ -136,11 +138,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <button class="range-tab" onclick="setRange(30,this)">30d</button>
         <button class="range-tab" onclick="setRange(60,this)">60d</button>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--text3)">Custom:</span>
-        <input type="date" id="date-from" style="font-size:12px;padding:5px 8px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)"/>
-        <span style="font-size:12px;color:var(--text3)">to</span>
-        <input type="date" id="date-to" style="font-size:12px;padding:5px 8px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)"/>
+      <div class="custom-range">
+        <span>Custom:</span>
+        <input type="date" id="date-from"/>
+        <span>to</span>
+        <input type="date" id="date-to"/>
         <button class="btn" onclick="applyCustomRange()">Apply</button>
       </div>
     </div>
@@ -426,22 +428,22 @@ function renderMetrics(cgm,boluses,basals){
 
 function renderGlucoseChart(cgm){
   if(glucChart) glucChart.destroy();
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
-  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  
+  const grid='rgba(255,255,255,0.05)';
   const showBand=document.getElementById('show-band')?.checked;
   const showDots=document.getElementById('show-dots')?.checked;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
   const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
-    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#E24B4A':v>HIGH?'#EF9F27':'#378ADD';}}}];
+    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#ff4d6d':v>HIGH?'#ffb347':'#00d4a0';}}}];
   if(showBand){
-    datasets.push({data:s.map(()=>HIGH),borderColor:'rgba(239,159,39,0.35)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
-    datasets.push({data:s.map(()=>LOW),borderColor:'rgba(226,75,74,0.35)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
+    datasets.push({data:s.map(()=>HIGH),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
+    datasets.push({data:s.map(()=>LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false});
   }
   if(showDots){
     datasets.push({data:s.map(d=>d.v<LOW||d.v>HIGH?d.v:null),borderColor:'transparent',
       pointRadius:s.map(d=>d.v<LOW||d.v>HIGH?3:0),
-      pointBackgroundColor:s.map(d=>d.v<LOW?'#E24B4A':'#EF9F27'),
+      pointBackgroundColor:s.map(d=>d.v<LOW?'#ff4d6d':'#ffb347'),
       pointBorderColor:'transparent',fill:false,tension:0});
   }
   glucChart=new Chart(document.getElementById('glucChart'),{
@@ -450,8 +452,8 @@ function renderGlucoseChart(cgm){
       interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false},datalabels:{display:false},tooltip:{filter:i=>i.datasetIndex===0,callbacks:{label:ctx=>ctx.parsed.y+' mg/dL'}}},
       scales:{
-        x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},
-        y:{min:40,max:250,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}
+        x:{ticks:{maxTicksLimit:10,color:'#505058',font:{size:10}},grid:{color:grid}},
+        y:{min:40,max:250,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
       }}
   });
 }
@@ -482,15 +484,15 @@ function renderHourlyAvg(cgm){
   const avgs=blocks.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
   const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(74,158,26,0.85)':d<=20?'rgba(99,153,34,0.75)':d<=35?'rgba(240,165,0,0.8)':'rgba(226,75,74,0.85)';});
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
-  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
+  
+  const grid='rgba(255,255,255,0.05)';
+  const lc='rgba(240,240,240,0.85)';
   hourlyAvgChart=new Chart(document.getElementById('hourlyAvgChart'),{
     type:'bar',data:{labels:blkLabels,datasets:[{data:avgs,backgroundColor:colors,borderRadius:5}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}},
         datalabels:{anchor:'end',align:'end',color:lc,font:{size:12,weight:'700'},formatter:v=>v||''}},
-      scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{min:60,max:180,ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}},
+      scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{min:60,max:180,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}},
       layout:{padding:{top:28}}}
   });
 }
@@ -505,9 +507,9 @@ function renderTDDChart(boluses,basals){
   const basalData=labels.map(k=>Math.round(days[k].basal*10)/10);
   const totalData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)*10)/10);
   const showTrend=document.getElementById('show-trend')?.checked;
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
-  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.85)';
+  
+  const grid='rgba(255,255,255,0.05)';
+  const lc='rgba(240,240,240,0.85)';
   const totalLabelPlugin={id:'totalLabels',afterDatasetsDraw(chart){
     const{ctx,data,scales:{x,y}}=chart;
     const bolusIdx=0,basalIdx=1;
@@ -531,8 +533,8 @@ function renderTDDChart(boluses,basals){
     ctx.restore();
   }};
   const datasets=[
-    {label:'Bolus',data:bolusData,backgroundColor:'rgba(55,138,221,0.75)',borderRadius:3,stack:'tdd'},
-    {label:'Basal',data:basalData,backgroundColor:'rgba(127,119,221,0.75)',borderRadius:3,stack:'tdd'}
+    {label:'Bolus',data:bolusData,backgroundColor:'rgba(77,159,255,0.8)',borderRadius:3,stack:'tdd'},
+    {label:'Basal',data:basalData,backgroundColor:'rgba(167,139,250,0.8)',borderRadius:3,stack:'tdd'}
   ];
   if(showTrend&&totalData.length>2){
     const n=totalData.length,xM=(n-1)/2,yM=totalData.reduce((a,b)=>a+b,0)/n;
@@ -546,7 +548,7 @@ function renderTDDChart(boluses,basals){
       plugins:{legend:{display:false},
         datalabels:{display:ctx=>ctx.datasetIndex<2,anchor:'center',align:'center',color:'rgba(255,255,255,0.9)',font:{size:10,weight:'600'},formatter:(v)=>{if(v<1.5)return'';return v+'u';}},
         tooltip:{callbacks:{footer:items=>{const tot=Math.round(items.reduce((s,i)=>s+i.parsed.y,0)*10)/10;const bp=tot>0?Math.round((items.find(i=>i.dataset.label==='Bolus')?.parsed.y||0)/tot*100):0;return`TDD: ${tot}u · Bolus ${bp}% · Basal ${100-bp}%`;}}}},
-      scales:{x:{ticks:{maxTicksLimit:14,color:'#888780',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid},stacked:true}},
+      scales:{x:{ticks:{maxTicksLimit:14,color:'#505058',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#505058',font:{size:10}},grid:{color:grid},stacked:true}},
       layout:{padding:{top:24}}}
   });
 }
@@ -564,15 +566,15 @@ function renderHourlyLows(cgm){
     return v===0?'rgba(136,135,128,0.2)':`rgba(${r},${g},${b},0.85)`;
   });
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
-  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
+  
+  const grid='rgba(255,255,255,0.05)';
+  const lc='rgba(240,240,240,0.85)';
   hourlyLowChart=new Chart(document.getElementById('hourlyLowChart'),{
     type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings <70 in block'}},
         datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
-      scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}},
+      scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:10},precision:0},grid:{color:grid}}},
       layout:{padding:{top:24}}}
   });
 }
@@ -590,15 +592,15 @@ function renderHourlyHighs(cgm){
     return v===0?'rgba(136,135,128,0.2)':`rgba(${r},${g},${b},0.85)`;
   });
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
-  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const lc=isDark?'rgba(255,255,255,0.85)':'rgba(20,20,18,0.8)';
+  
+  const grid='rgba(255,255,255,0.05)';
+  const lc='rgba(240,240,240,0.85)';
   hourlyHighChart=new Chart(document.getElementById('hourlyHighChart'),{
     type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings >150 in block'}},
         datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
-      scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#888780',font:{size:10},precision:0},grid:{color:grid}}},
+      scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:10},precision:0},grid:{color:grid}}},
       layout:{padding:{top:24}}}
   });
 }
@@ -740,17 +742,17 @@ function renderSensitivityChart(boluses,basals){
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
   const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*100)/100);
   const rolling7=tddKgData.map((_,i)=>{const w=tddKgData.slice(Math.max(0,i-6),i+1);return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;});
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
-  const grid=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+  
+  const grid='rgba(255,255,255,0.05)';
   sensitivityChart=new Chart(document.getElementById('sensitivityChart'),{
     type:'line',
     data:{labels,datasets:[
-      {label:'Daily',data:tddKgData,borderColor:'rgba(29,158,117,0.4)',borderWidth:1,pointRadius:2,pointBackgroundColor:'rgba(29,158,117,0.4)',tension:0.2,fill:false},
-      {label:'7d avg',data:rolling7,borderColor:'#1D9E75',borderWidth:2,borderDash:[4,4],pointRadius:0,tension:0.3,fill:false}
+      {label:'Daily',data:tddKgData,borderColor:'rgba(0,212,160,0.35)',borderWidth:1,pointRadius:2,pointBackgroundColor:'rgba(0,212,160,0.4)',tension:0.2,fill:false},
+      {label:'7d avg',data:rolling7,borderColor:'#00d4a0',borderWidth:2,borderDash:[4,4],pointRadius:0,tension:0.3,fill:false}
     ]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},datalabels:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.parsed.y+' u/kg'}}},
-      scales:{x:{ticks:{maxTicksLimit:10,color:'#888780',font:{size:10}},grid:{color:grid}},y:{ticks:{color:'#888780',font:{size:10}},grid:{color:grid}}}}
+      scales:{x:{ticks:{maxTicksLimit:10,color:'#505058',font:{size:10}},grid:{color:grid}},y:{ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}}}
   });
 }
 
