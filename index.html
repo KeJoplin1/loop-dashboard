@@ -347,7 +347,9 @@ function renderMetrics(cgm,boluses,basals){
   const ea1c=Math.round((avg+46.7)/28.7*10)/10;
   const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
   const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
-  const tdd=Math.round((totalBolus+totalBasal)/currentDays*10)/10;
+  const uniqueDays=new Set([...boluses.map(b=>dayKey(b.t)),...basals.map(b=>dayKey(b.t))]).size;
+  const actualDays=Math.max(1,uniqueDays);
+  const tdd=Math.round((totalBolus+totalBasal)/actualDays*10)/10;
   const tddKg=(Math.round(tdd/WEIGHT_KG*100)/100).toFixed(2);
   const totalT=totalBolus+totalBasal;
   const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
@@ -733,7 +735,8 @@ function renderInsights(cgm,boluses,basals){
   const gmi=Math.round((3.31+0.02392*avg)*100)/100;
   const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
   const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
-  const tdd=Math.round((totalBolus+totalBasal)/currentDays*10)/10;
+  const uniqueDaysI=new Set([...boluses.map(b=>dayKey(b.t)),...basals.map(b=>dayKey(b.t))]).size;
+  const tdd=Math.round((totalBolus+totalBasal)/Math.max(1,uniqueDaysI)*10)/10;
   const tddKg=Math.round(tdd/WEIGHT_KG*100)/100;
   const totalT=totalBolus+totalBasal;
   const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
