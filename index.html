@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -6,6 +7,8 @@
 <title>Loop Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -110,7 +113,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <span class="status-dot" id="status-dot"></span>
       <span style="font-size:12px;color:var(--text3)" id="status-text">Connecting...</span>
       <button class="btn" onclick="loadFromOneDrive()">Refresh</button>
-      <button class="btn" onclick="window.print()">Export PDF</button>
+      <button class="btn" id="pdf-btn" onclick="exportPDF()">Export PDF</button>
       <label class="btn primary" for="fileInput">Upload CSV</label>
       <input type="file" id="fileInput" accept=".csv" onchange="handleFile(event)"/>
     </div>
@@ -130,111 +133,113 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
   <div id="dashboard" style="display:none">
 
-    <div class="range-tabs-row">
-      <div class="range-tabs" style="margin-bottom:0">
-        <button class="range-tab active" onclick="setRange(3,this)">3d</button>
-        <button class="range-tab" onclick="setRange(7,this)">7d</button>
-        <button class="range-tab" onclick="setRange(14,this)">14d</button>
-        <button class="range-tab" onclick="setRange(30,this)">30d</button>
-        <button class="range-tab" onclick="setRange(60,this)">60d</button>
-      </div>
-      <div class="custom-range">
-        <span>Custom:</span>
-        <input type="date" id="date-from"/>
-        <span>to</span>
-        <input type="date" id="date-to"/>
-        <button class="btn" onclick="applyCustomRange()">Apply</button>
+```
+<div class="range-tabs-row">
+  <div class="range-tabs" style="margin-bottom:0">
+    <button class="range-tab active" onclick="setRange(3,this)">3d</button>
+    <button class="range-tab" onclick="setRange(7,this)">7d</button>
+    <button class="range-tab" onclick="setRange(14,this)">14d</button>
+    <button class="range-tab" onclick="setRange(30,this)">30d</button>
+    <button class="range-tab" onclick="setRange(60,this)">60d</button>
+  </div>
+  <div class="custom-range">
+    <span>Custom:</span>
+    <input type="date" id="date-from"/>
+    <span>to</span>
+    <input type="date" id="date-to"/>
+    <button class="btn" onclick="applyCustomRange()">Apply</button>
+  </div>
+</div>
+
+<div class="metrics-wrap" id="metrics-wrap"></div>
+
+<div class="card">
+  <div class="card-title">Glucose trace (mg/dL)</div>
+  <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
+    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
+  </div>
+  <div style="position:relative;width:100%;height:240px">
+    <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <div class="card-title">Time in range (70–150 mg/dL)</div>
+    <div id="tir-display"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Average glucose by 3-hour block</div>
+    <div style="position:relative;width:100%;height:220px">
+      <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <div class="card-title">Low events by 3-hour block (&lt;70)</div>
+    <div style="position:relative;width:100%;height:180px">
+      <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">High events by 3-hour block (&gt;150)</div>
+    <div style="position:relative;width:100%;height:180px">
+      <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <div class="card-title">Overnight vs daytime TIR</div>
+    <div id="overnight-display"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Post-meal glucose pattern</div>
+    <div id="postmeal-display"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Day of week breakdown</div>
+  <div id="dow-display"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
+  <div style="display:flex;gap:12px;margin-bottom:10px">
+    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
+  </div>
+  <div style="position:relative;width:100%;height:220px">
+    <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
+  <div style="position:relative;width:100%;height:160px">
+    <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
+  </div>
+  <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
+</div>
+
+<div class="insights-dropdown">
+  <div class="insights-header" onclick="toggleInsights()">
+    <div class="insights-header-left">
+      <span style="font-size:16px">💡</span>
+      <div>
+        <div class="insights-title">Insights & recommendations</div>
+        <div class="insights-summary" id="insights-summary">Loading...</div>
       </div>
     </div>
-
-    <div class="metrics-wrap" id="metrics-wrap"></div>
-
-    <div class="card">
-      <div class="card-title">Glucose trace (mg/dL)</div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
-      </div>
-      <div style="position:relative;width:100%;height:240px">
-        <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
-      </div>
-    </div>
-
-    <div class="two-col">
-      <div class="card">
-        <div class="card-title">Time in range (70–150 mg/dL)</div>
-        <div id="tir-display"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Average glucose by 3-hour block</div>
-        <div style="position:relative;width:100%;height:220px">
-          <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <div class="two-col">
-      <div class="card">
-        <div class="card-title">Low events by 3-hour block (&lt;70)</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">High events by 3-hour block (&gt;150)</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <div class="two-col">
-      <div class="card">
-        <div class="card-title">Overnight vs daytime TIR</div>
-        <div id="overnight-display"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Post-meal glucose pattern</div>
-        <div id="postmeal-display"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Day of week breakdown</div>
-      <div id="dow-display"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
-      <div style="display:flex;gap:12px;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
-      </div>
-      <div style="position:relative;width:100%;height:220px">
-        <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
-      <div style="position:relative;width:100%;height:160px">
-        <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
-    </div>
-
-    <div class="insights-dropdown">
-      <div class="insights-header" onclick="toggleInsights()">
-        <div class="insights-header-left">
-          <span style="font-size:16px">💡</span>
-          <div>
-            <div class="insights-title">Insights & recommendations</div>
-            <div class="insights-summary" id="insights-summary">Loading...</div>
-          </div>
-        </div>
-        <span class="insights-chevron" id="insights-chevron">▼</span>
-      </div>
-      <div class="insights-body" id="insights-body"></div>
-    </div>
+    <span class="insights-chevron" id="insights-chevron">▼</span>
+  </div>
+  <div class="insights-body" id="insights-body"></div>
+</div>
+```
 
   </div>
 </div>
@@ -856,7 +861,73 @@ function toggleInsights(){
   chev.classList.toggle('open');
 }
 
+async function exportPDF(){
+  const btn=document.getElementById('pdf-btn');
+  const orig=btn.textContent;
+  btn.textContent='Generating...';
+  btn.style.opacity='0.6';
+  btn.style.pointerEvents='none';
+
+  // Temporarily open insights if closed
+  const insightsBody=document.getElementById('insights-body');
+  const wasOpen=insightsBody.classList.contains('open');
+  if(!wasOpen){insightsBody.classList.add('open');}
+
+  await new Promise(r=>setTimeout(r,300));
+
+  try{
+    const dashboard=document.getElementById('dashboard');
+    const canvas=await html2canvas(dashboard,{
+      backgroundColor:'#0c0c0e',
+      scale:1.5,
+      useCORS:true,
+      logging:false,
+      windowWidth:1100,
+      scrollY:0
+    });
+
+    const{jsPDF}=window.jspdf;
+    const imgW=210; // A4 width mm
+    const pageH=297; // A4 height mm
+    const imgH=canvas.height*imgW/canvas.width;
+    const pdf=new jsPDF('p','mm','a4');
+
+    let yPos=0;
+    let remaining=imgH;
+    let page=0;
+
+    while(remaining>0){
+      if(page>0) pdf.addPage();
+      const sliceH=Math.min(pageH,remaining);
+      const srcY=(imgH-remaining)*(canvas.height/imgH);
+      const srcH=sliceH*(canvas.height/imgH);
+
+      // Create slice canvas
+      const slice=document.createElement('canvas');
+      slice.width=canvas.width;
+      slice.height=srcH;
+      const ctx=slice.getContext('2d');
+      ctx.drawImage(canvas,0,srcY,canvas.width,srcH,0,0,canvas.width,srcH);
+
+      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,imgW,sliceH);
+      remaining-=sliceH;
+      page++;
+    }
+
+    const dateStr=new Date().toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}).replace(/ /g,'-');
+    pdf.save(`loop-dashboard-${dateStr}.pdf`);
+  }catch(e){
+    alert('PDF export failed: '+e.message);
+  }finally{
+    if(!wasOpen){insightsBody.classList.remove('open');}
+    btn.textContent=orig;
+    btn.style.opacity='';
+    btn.style.pointerEvents='';
+  }
+}
+
 loadFromOneDrive();
 </script>
+
 </body>
 </html>
