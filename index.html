@@ -868,12 +868,11 @@ async function exportPDF(){
   btn.style.opacity='0.6';
   btn.style.pointerEvents='none';
 
-  // Temporarily open insights if closed
   const insightsBody=document.getElementById('insights-body');
   const wasOpen=insightsBody.classList.contains('open');
-  if(!wasOpen){insightsBody.classList.add('open');}
+  if(!wasOpen) insightsBody.classList.add('open');
 
-  await new Promise(r=>setTimeout(r,300));
+  await new Promise(r=>setTimeout(r,400));
 
   try{
     const dashboard=document.getElementById('dashboard');
@@ -883,43 +882,28 @@ async function exportPDF(){
       useCORS:true,
       logging:false,
       windowWidth:1100,
-      scrollY:0
+      scrollY:-window.scrollY
     });
 
     const{jsPDF}=window.jspdf;
-    const imgW=210; // A4 width mm
-    const pageH=297; // A4 height mm
-    const imgH=canvas.height*imgW/canvas.width;
-    const pdf=new jsPDF('p','mm','a4');
+    const imgW=210; // A4 width in mm
+    const imgH=Math.ceil(canvas.height*imgW/canvas.width);
 
-    let yPos=0;
-    let remaining=imgH;
-    let page=0;
+    // Single tall page — no slicing, no cutoffs
+    const pdf=new jsPDF({
+      orientation:'portrait',
+      unit:'mm',
+      format:[imgW, imgH]
+    });
 
-    while(remaining>0){
-      if(page>0) pdf.addPage();
-      const sliceH=Math.min(pageH,remaining);
-      const srcY=(imgH-remaining)*(canvas.height/imgH);
-      const srcH=sliceH*(canvas.height/imgH);
-
-      // Create slice canvas
-      const slice=document.createElement('canvas');
-      slice.width=canvas.width;
-      slice.height=srcH;
-      const ctx=slice.getContext('2d');
-      ctx.drawImage(canvas,0,srcY,canvas.width,srcH,0,0,canvas.width,srcH);
-
-      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,imgW,sliceH);
-      remaining-=sliceH;
-      page++;
-    }
+    pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,imgW,imgH);
 
     const dateStr=new Date().toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}).replace(/ /g,'-');
     pdf.save(`loop-dashboard-${dateStr}.pdf`);
   }catch(e){
     alert('PDF export failed: '+e.message);
   }finally{
-    if(!wasOpen){insightsBody.classList.remove('open');}
+    if(!wasOpen) insightsBody.classList.remove('open');
     btn.textContent=orig;
     btn.style.opacity='';
     btn.style.pointerEvents='';
