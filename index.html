@@ -553,13 +553,14 @@ function renderGlucoseChart(cgm){
       scales:{
         x:{ticks:{maxTicksLimit:10,color:'#505058',font:{size:10}},grid:{color:grid}},
         y:{
-          min:40,max:260,
+          min:40,max:225,
           ticks:{color:'#505058',font:{size:10}},
           grid:{color:grid}
         }
       },
+      layout:{padding:{bottom:60}},
       animation:{onComplete:()=>{
-        renderEventOverlay(glucChart,s,showBolus,showMeals);
+        renderEventOverlay(glucChart,s,showBolus,showMeals,filteredMeals,filteredBoluses);
       }}
     }
   });
@@ -568,7 +569,7 @@ function renderGlucoseChart(cgm){
 // ── Round to nearest 0.1 ────────────────────────────────────────────
 function roundTenth(v){return Math.round(v*10)/10;}
 
-function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
+function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
   const overlay=document.getElementById('bolus-overlay');
   if(!overlay||!chart) return;
   overlay.innerHTML='';
@@ -583,29 +584,17 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
 
   const svgNS='http://www.w3.org/2000/svg';
 
-  // Helper: x pixel from timestamp
   const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
-
-  // Helper: y pixel from glucose value (using chart's y scale)
   const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
 
-  // ── BOLUS ZONE — bottom of chart area ───────────────────────────
-  // SVG is full height of .gluc-chart-wrap (330px).
-  // chartArea.bottom is where the y-axis ends.
   const svgH=overlay.clientHeight||330;
-  const BOLUS_ZONE_TOP=chartArea.bottom+10;  // 10px gap below axis
-  const BOLUS_ZONE_BOT=svgH-22;              // leave 22px for x-axis date labels
+  const BOLUS_ZONE_TOP=chartArea.bottom+10;
+  const BOLUS_ZONE_BOT=svgH-22;
   const BOLUS_ZONE_H=Math.max(BOLUS_ZONE_BOT-BOLUS_ZONE_TOP,40);
 
-  // ── MEAL LABEL Y — sits on the glucose line ──────────────────────
-  // We'll pin the label ~28px above the glucose value at meal time
-
-  // Collect events for unified tooltip
-  // events[]: {xPx, type, label, color, t, glucAtTime}
   const events=[];
 
-  // ── Lookup: nearest glucose value at a given timestamp ──────────
-  // Search filteredCGM (full res) not just downsampled cgmSampled
+  // ── Lookup: nearest glucose in full-res data ──────────────────
   function glucAtTime(ts){
     let best=null,bestD=Infinity;
     filteredCGM.forEach(d=>{
@@ -615,9 +604,9 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
     return best;
   }
 
-  // ── BOLUS BARS (bottom zone) ─────────────────────────────────────
-  if(showBolus){
-    const visibleBoluses=filteredBoluses.filter(b=>b.units>=0.5);
+  // ── BOLUS BARS ───────────────────────────────────────────────
+  if(showBolus && boluses){
+    const visibleBoluses=boluses.filter(b=>b.units>=0.5);
     const maxU=Math.max(...visibleBoluses.map(b=>b.units),1);
 
     visibleBoluses.forEach(b=>{
@@ -626,13 +615,11 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       const xPx=xOf(bT);
       const units=roundTenth(b.units);
 
-      // Bar height proportional to dose (min 8px, max BOLUS_ZONE_H)
       const barH=Math.max(8,Math.round((units/maxU)*BOLUS_ZONE_H));
-      const barW=Math.min(7,(chartArea.right-chartArea.left)*0.015); // skinny: max 7px
+      const barW=Math.min(7,(chartArea.right-chartArea.left)*0.015);
       const barX=xPx-barW/2;
       const barY=BOLUS_ZONE_BOT-barH;
 
-      // Thin dashed vertical line through whole chart area
       const line=document.createElementNS(svgNS,'line');
       line.setAttribute('x1',xPx);line.setAttribute('y1',chartArea.top);
       line.setAttribute('x2',xPx);line.setAttribute('y2',chartArea.bottom);
@@ -641,7 +628,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       line.setAttribute('stroke-dasharray','3,4');
       overlay.appendChild(line);
 
-      // Bar rect
       const rect=document.createElementNS(svgNS,'rect');
       rect.setAttribute('x',barX);
       rect.setAttribute('y',barY);
@@ -653,20 +639,16 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       rect.setAttribute('stroke-width','1');
       overlay.appendChild(rect);
 
-      // Unit label: inside bar if tall enough, else above
       const lbl=document.createElementNS(svgNS,'text');
       lbl.setAttribute('x',xPx);
-      lbl.setAttribute('fill','rgba(255,255,255,0.9)');
       lbl.setAttribute('font-size','9');
       lbl.setAttribute('font-weight','700');
       lbl.setAttribute('text-anchor','middle');
       lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
       if(barH>=18){
-        // Label inside bar, near top
         lbl.setAttribute('y',barY+10);
         lbl.setAttribute('fill','rgba(255,255,255,0.95)');
       } else {
-        // Label above bar
         lbl.setAttribute('y',barY-3);
         lbl.setAttribute('fill','#4d9fff');
       }
@@ -674,31 +656,26 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       overlay.appendChild(lbl);
 
       const gluc=glucAtTime(bT);
-      events.push({xPx,type:'bolus',units,color:'#4d9fff',t:b.t,gluc});
+      events.push({xPx,barY,barBot:BOLUS_ZONE_BOT,type:'bolus',units,color:'#4d9fff',t:b.t,gluc});
     });
   }
 
-  // ── MEAL MARKERS (on the glucose trace) ─────────────────────────
-  if(showMeals){
-    // Use full filteredMeals — already filtered to time range
-    filteredMeals.forEach(m=>{
+  // ── MEAL MARKERS ─────────────────────────────────────────────
+  if(showMeals && meals){
+    meals.forEach(m=>{
       const mT=m.t.getTime();
       if(mT<minT||mT>maxT) return;
       const xPx=xOf(mT);
       const gluc=glucAtTime(mT);
-      const yG=gluc!=null?yOfGluc(Math.min(Math.max(gluc,40),260)):chartArea.top+40;
+      const yG=gluc!=null?yOfGluc(Math.min(Math.max(gluc,40),225)):chartArea.top+40;
 
-      // Pill/tag — sits above the glucose line
       const labelText=m.carbs>0?m.carbs+'g':'meal';
-      // Measure text width estimate: ~6px per char + 10px padding
       const PILL_W=Math.max(26, labelText.length*6+10);
       const PILL_H=16;
-      // Pin pill above line, clamp so it never goes above chartArea.top
       const rawPillY=yG-PILL_H-10;
       const PILL_Y=Math.max(chartArea.top+2, rawPillY);
       const PILL_X=xPx-PILL_W/2;
 
-      // Connector line from pill bottom to glucose line (only if there's space)
       if(PILL_Y+PILL_H < yG-1){
         const connector=document.createElementNS(svgNS,'line');
         connector.setAttribute('x1',xPx);
@@ -711,7 +688,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
         overlay.appendChild(connector);
       }
 
-      // Dot on the glucose trace
       const dot=document.createElementNS(svgNS,'circle');
       dot.setAttribute('cx',xPx);
       dot.setAttribute('cy',yG);
@@ -721,7 +697,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       dot.setAttribute('stroke-width','1');
       overlay.appendChild(dot);
 
-      // Pill rect
       const pill=document.createElementNS(svgNS,'rect');
       pill.setAttribute('x',PILL_X);
       pill.setAttribute('y',PILL_Y);
@@ -733,7 +708,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       pill.setAttribute('stroke-width','1');
       overlay.appendChild(pill);
 
-      // Carb text inside pill
       const lbl=document.createElementNS(svgNS,'text');
       lbl.setAttribute('x',xPx);
       lbl.setAttribute('y',PILL_Y+PILL_H-4);
@@ -745,44 +719,31 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       lbl.textContent=labelText;
       overlay.appendChild(lbl);
 
-      events.push({xPx,type:'meal',carbs:m.carbs,color:'#00d4a0',t:m.t,gluc});
+      events.push({xPx,pillY:PILL_Y,pillBot:PILL_Y+PILL_H,type:'meal',carbs:m.carbs,color:'#00d4a0',t:m.t,gluc});
     });
   }
 
-  // ── Unified hover tooltip ────────────────────────────────────────
-  // Strategy: always show glucose at the hovered x position.
-  // When near a bolus/meal event, add that info too.
+  // ── Unified hover tooltip ────────────────────────────────────
   const tooltip=document.getElementById('event-tooltip');
   if(!tooltip) return;
 
-  const SNAP_PX=28;
+  // Tight snap: only 10px horizontal, and only trigger bolus when cursor is IN bolus zone
+  const SNAP_X=10;
 
-  // Build a time→glucose lookup for fast interpolation
-  // We'll use the canvas's chart instance to get the nearest data point
   function getNearestGluc(xPx){
-    // Walk cgmSampled to find the two points bracketing this x
-    const rect=overlay.getBoundingClientRect();
-    // Convert xPx (SVG local) to a time
     const frac=(xPx-chartArea.left)/(chartArea.right-chartArea.left);
     const ts=minT+frac*tRange;
-    // Find nearest cgm point
     let best=null,bestD=Infinity;
-    cgmSampled.forEach(d=>{
+    filteredCGM.forEach(d=>{
       const d2=Math.abs(d.t.getTime()-ts);
       if(d2<bestD){bestD=d2;best=d;}
     });
     return best;
   }
 
-  overlay.onmousemove=function(e){
-    const rect=overlay.getBoundingClientRect();
-    const mx=e.clientX-rect.left;
-    const my=e.clientY-rect.top;
+  function showTooltip(e,mx,my){
+    if(mx<chartArea.left||mx>chartArea.right){tooltip.style.display='none';return;}
 
-    // Only respond when cursor is within the chart area (including bolus zone)
-    if(mx<chartArea.left||mx>chartArea.right) {tooltip.style.display='none';return;}
-
-    // Get glucose at cursor x
     const nearest=getNearestGluc(mx);
     if(!nearest){tooltip.style.display='none';return;}
 
@@ -790,23 +751,24 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       ' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     const glucColor=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH?'#ffb347':'#00d4a0';
 
-    // Find nearby events
-    const nearbyEvents=events.filter(ev=>Math.abs(ev.xPx-mx)<SNAP_PX);
-
     let html=`<div class="tt-time">${timeStr}</div>`;
     html+=`<div class="tt-gluc" style="color:${glucColor}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
 
-    nearbyEvents.forEach(ev=>{
-      if(ev.type==='bolus'){
+    // Only add bolus if cursor is in the bolus zone Y-range
+    const inBolusZone = my >= BOLUS_ZONE_TOP && my <= BOLUS_ZONE_BOT;
+    // Only add meal if cursor is in the chart area Y-range (glucose zone)
+    const inGlucZone = my >= chartArea.top && my <= chartArea.bottom;
+
+    events.forEach(ev=>{
+      if(Math.abs(ev.xPx-mx) > SNAP_X) return;
+      if(ev.type==='bolus' && inBolusZone){
         html+=`<div class="tt-row"><span style="color:#4d9fff">💉 ${ev.units}u bolus</span></div>`;
-      } else if(ev.type==='meal'){
+      } else if(ev.type==='meal' && inGlucZone){
         html+=`<div class="tt-row"><span style="color:#00d4a0">🍽️ ${ev.carbs}g carbs</span></div>`;
       }
     });
 
     tooltip.innerHTML=html;
-
-    // Position tooltip: prefer above cursor, centered on x
     const tipW=tooltip.offsetWidth||140;
     const tipH=tooltip.offsetHeight||60;
     let tipLeft=e.clientX-tipW/2;
@@ -816,40 +778,18 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
     tooltip.style.left=tipLeft+'px';
     tooltip.style.top=tipTop+'px';
     tooltip.style.display='block';
-  };
+  }
 
+  overlay.onmousemove=function(e){
+    const rect=overlay.getBoundingClientRect();
+    showTooltip(e, e.clientX-rect.left, e.clientY-rect.top);
+  };
   overlay.onmouseleave=()=>{tooltip.style.display='none';};
 
-  // Also handle Chart.js canvas hover for the glucose line itself
   const canvas=document.getElementById('glucChart');
   canvas.onmousemove=function(e){
-    // Delegate to overlay handler using same coordinates
     const rect=overlay.getBoundingClientRect();
-    const mx=e.clientX-rect.left;
-    const my=e.clientY-rect.top;
-    if(mx<chartArea.left||mx>chartArea.right){tooltip.style.display='none';return;}
-    const nearest=getNearestGluc(mx);
-    if(!nearest){tooltip.style.display='none';return;}
-    const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+
-      ' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    const glucColor=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH?'#ffb347':'#00d4a0';
-    const nearbyEvents=events.filter(ev=>Math.abs(ev.xPx-mx)<SNAP_PX);
-    let html=`<div class="tt-time">${timeStr}</div>`;
-    html+=`<div class="tt-gluc" style="color:${glucColor}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
-    nearbyEvents.forEach(ev=>{
-      if(ev.type==='bolus') html+=`<div class="tt-row"><span style="color:#4d9fff">💉 ${ev.units}u bolus</span></div>`;
-      else if(ev.type==='meal') html+=`<div class="tt-row"><span style="color:#00d4a0">🍽️ ${ev.carbs}g carbs</span></div>`;
-    });
-    tooltip.innerHTML=html;
-    const tipW=tooltip.offsetWidth||140;
-    const tipH=tooltip.offsetHeight||60;
-    let tipLeft=e.clientX-tipW/2;
-    let tipTop=e.clientY-tipH-14;
-    tipLeft=Math.max(8,Math.min(tipLeft,window.innerWidth-tipW-8));
-    tipTop=Math.max(8,tipTop);
-    tooltip.style.left=tipLeft+'px';
-    tooltip.style.top=tipTop+'px';
-    tooltip.style.display='block';
+    showTooltip(e, e.clientX-rect.left, e.clientY-rect.top);
   };
   canvas.onmouseleave=()=>{tooltip.style.display='none';};
 }
@@ -1105,18 +1045,31 @@ function renderDayOfWeek(cgm,boluses,basals){
   const MON_SUN_ORDER=[1,2,3,4,5,6,0];
   const rows=MON_SUN_ORDER.map(dow=>allStats.find(r=>r.dow===dow)).filter(Boolean);
 
-  // Heat map: interpolate card background based on TIR
-  // 100% TIR → rich green tint, 0% → red tint, middle → neutral
+  // Heat map: normalize relative to the actual min/max TIR in this dataset
+  // Best day → full green, worst day → full red, rest interpolated
+  const tirVals=allStats.map(r=>r.tir);
+  const tirMin=Math.min(...tirVals);
+  const tirMax=Math.max(...tirVals);
+  const tirSpan=Math.max(tirMax-tirMin,1); // avoid div/0
+
+  function tirNorm(tir){
+    // 0 = worst day, 1 = best day
+    return (tir-tirMin)/tirSpan;
+  }
   function tirHeatBg(tir){
-    // green channel: tir/100, red channel: (100-tir)/100
-    const g=Math.round(tir/100*180);
-    const r=Math.round((100-tir)/100*160);
-    return`rgba(${r},${g},80,0.13)`;
+    const n=tirNorm(tir);
+    // n=1 → green (0,180,80), n=0 → red (180,30,30)
+    const r=Math.round(180-n*180);
+    const g=Math.round(30+n*150);
+    const b=Math.round(30+n*50);
+    return`rgba(${r},${g},${b},0.18)`;
   }
   function tirHeatBorder(tir){
-    const g=Math.round(tir/100*200);
-    const r=Math.round((100-tir)/100*200);
-    return`rgba(${r},${g},80,0.35)`;
+    const n=tirNorm(tir);
+    const r=Math.round(160-n*130);
+    const g=Math.round(40+n*160);
+    const b=Math.round(40+n*40);
+    return`rgba(${r},${g},${b},0.45)`;
   }
 
   const cards=rows.map((r)=>{
