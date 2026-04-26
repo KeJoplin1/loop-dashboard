@@ -96,6 +96,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .day-nav-label{font-size:12px;font-weight:600;color:var(--text);min-width:72px;text-align:center}
 .gluc-chart-wrap{position:relative;width:100%;height:240px}
 .bolus-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#event-tooltip{position:fixed;pointer-events:none;display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text);line-height:1.6;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.4);white-space:nowrap}
 @media print{
   .topbar-right,.range-tabs-row{display:none!important}
   .app{padding:8px}
@@ -168,12 +169,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-bolus" onchange="renderGlucoseChart(filteredCGM)" checked> Bolus markers</label>
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
       </div>
       <div class="gluc-chart-wrap">
         <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
-        <svg id="bolus-overlay" class="bolus-overlay"></svg>
+        <svg id="bolus-overlay" class="bolus-overlay" style="pointer-events:all"></svg>
       </div>
     </div>
+    <div id="event-tooltip"></div>
 
     <div class="two-col">
       <div class="card">
@@ -322,6 +325,9 @@ function parseAndRender(csvText){
   allBasals=rows.filter(r=>r.type==='basal'&&r.basal_rate!=='')
     .map(r=>({t:new Date(r.timestamp),rate:parseFloat(r.basal_rate)||0,delivered:parseFloat(r.basal_delivered)||0}))
     .sort((a,b)=>a.t-b.t);
+  allMeals=rows.filter(r=>r.type==='meal'&&r.carbs_g!=='')
+    .map(r=>({t:new Date(r.timestamp),carbs:parseFloat(r.carbs_g)||0}))
+    .sort((a,b)=>a.t-b.t);
   if(!allCGM.length){showError('No CGM data found.');document.getElementById('loading-state').style.display='none';return;}
   document.getElementById('status-dot').className='status-dot live';
   document.getElementById('status-text').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -406,6 +412,7 @@ function renderAll(){
   filteredCGM=filterByDays(allCGM,currentDays);
   filteredBoluses=filterByDays(allBoluses,currentDays);
   filteredBasals=filterByDays(allBasals,currentDays);
+  filteredMeals=filterByDays(allMeals,currentDays);
   if(!filteredCGM.length){showError('No data in selected range.');return;}
   document.getElementById('error-box').style.display='none';
   const minT=filteredCGM[0].t,maxT=filteredCGM[filteredCGM.length-1].t;
@@ -488,6 +495,7 @@ function renderGlucoseChart(cgm){
   const showBand=document.getElementById('show-band')?.checked;
   const showDots=document.getElementById('show-dots')?.checked;
   const showBolus=document.getElementById('show-bolus')?.checked;
+  const showMeals=document.getElementById('show-meals')?.checked;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
   const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
@@ -503,7 +511,7 @@ function renderGlucoseChart(cgm){
       pointBorderColor:'transparent',fill:false,tension:0});
   }
 
-  // Clear bolus overlay while chart is rendering
+  // Clear overlay while chart is rendering
   const overlay=document.getElementById('bolus-overlay');
   if(overlay) overlay.innerHTML='';
 
@@ -517,81 +525,160 @@ function renderGlucoseChart(cgm){
         y:{min:40,max:250,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
       },
       animation:{onComplete:()=>{
-        if(showBolus) renderBolusOverlay(glucChart,s);
+        renderEventOverlay(glucChart,s,showBolus,showMeals);
       }}
     }
   });
 }
 
-function renderBolusOverlay(chart,cgmSampled){
+function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
   const overlay=document.getElementById('bolus-overlay');
   if(!overlay||!chart) return;
   overlay.innerHTML='';
 
-  // Only manual boluses ≥0.5u
-  const manualBoluses=filteredBoluses.filter(b=>b.units>=0.5);
-  if(!manualBoluses.length) return;
-
-  const {scales:{x,y},chartArea}=chart;
+  const {chartArea}=chart;
   if(!chartArea) return;
 
   const minT=cgmSampled[0]?.t?.getTime();
   const maxT=cgmSampled[cgmSampled.length-1]?.t?.getTime();
   if(!minT||!maxT) return;
   const tRange=maxT-minT;
+  if(tRange===0) return;
 
   const svgNS='http://www.w3.org/2000/svg';
-  const maxUnits=Math.max(...manualBoluses.map(b=>b.units));
 
-  manualBoluses.forEach(b=>{
-    const bT=b.t.getTime();
-    if(bT<minT||bT>maxT) return;
+  // Helper: x pixel from timestamp
+  const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
 
-    // X position: proportional across chart area
-    const xPct=(bT-minT)/tRange;
-    const xPx=chartArea.left+xPct*(chartArea.right-chartArea.left);
+  // Marker rows from top of chart area
+  const BOLUS_Y=chartArea.top+14;  // blue triangles row
+  const MEAL_Y=chartArea.top+32;   // green diamonds row (below bolus row)
 
-    // Size scaled by units (min 5px, max 10px radius)
-    const r=5+Math.round((b.units/Math.max(maxUnits,1))*5);
-    const triH=r*2;
-    const triW=r*1.6;
+  // Collect events for hover tooltip: [{xPx, label, color}]
+  const events=[];
 
-    // Triangle at bottom of chart area (pointing down = insulin going down)
-    const baseY=chartArea.bottom-4;
-    const tipY=baseY+triH;
+  // ── BOLUS markers ──────────────────────────────────────────────────────
+  if(showBolus){
+    const manualBoluses=filteredBoluses.filter(b=>b.units>=0.5);
+    const maxU=Math.max(...manualBoluses.map(b=>b.units),1);
+    manualBoluses.forEach(b=>{
+      const bT=b.t.getTime();
+      if(bT<minT||bT>maxT) return;
+      const xPx=xOf(bT);
+      const r=5+Math.round((b.units/maxU)*4); // 5–9px base
+      const triH=r*1.8;
+      const triW=r*1.5;
 
-    // Triangle points: top-left, top-right, tip
-    const pts=`${xPx-triW/2},${baseY} ${xPx+triW/2},${baseY} ${xPx},${tipY}`;
+      // Vertical dashed line full height
+      const line=document.createElementNS(svgNS,'line');
+      line.setAttribute('x1',xPx);line.setAttribute('y1',chartArea.top);
+      line.setAttribute('x2',xPx);line.setAttribute('y2',chartArea.bottom);
+      line.setAttribute('stroke','rgba(77,159,255,0.12)');
+      line.setAttribute('stroke-width','1');
+      line.setAttribute('stroke-dasharray','3,3');
+      overlay.appendChild(line);
 
-    const tri=document.createElementNS(svgNS,'polygon');
-    tri.setAttribute('points',pts);
-    tri.setAttribute('fill','rgba(77,159,255,0.9)');
-    tri.setAttribute('stroke','rgba(77,159,255,0.3)');
-    tri.setAttribute('stroke-width','1');
+      // Triangle pointing DOWN from BOLUS_Y (apex at top, base below)
+      const tipY=BOLUS_Y;
+      const baseY=BOLUS_Y+triH;
+      const pts=`${xPx},${tipY} ${xPx-triW/2},${baseY} ${xPx+triW/2},${baseY}`;
+      const tri=document.createElementNS(svgNS,'polygon');
+      tri.setAttribute('points',pts);
+      tri.setAttribute('fill','rgba(77,159,255,0.9)');
+      tri.setAttribute('stroke','rgba(77,159,255,0.4)');
+      tri.setAttribute('stroke-width','1');
+      overlay.appendChild(tri);
 
-    // Tooltip-style label
-    const label=document.createElementNS(svgNS,'text');
-    label.setAttribute('x',xPx);
-    label.setAttribute('y',baseY-6);
-    label.setAttribute('text-anchor','middle');
-    label.setAttribute('fill','#4d9fff');
-    label.setAttribute('font-size','10');
-    label.setAttribute('font-weight','600');
-    label.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-    label.textContent=b.units+'u';
+      // Unit label above triangle
+      const lbl=document.createElementNS(svgNS,'text');
+      lbl.setAttribute('x',xPx);
+      lbl.setAttribute('y',BOLUS_Y-4);
+      lbl.setAttribute('text-anchor','middle');
+      lbl.setAttribute('fill','#4d9fff');
+      lbl.setAttribute('font-size','9');
+      lbl.setAttribute('font-weight','700');
+      lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+      lbl.textContent=b.units+'u';
+      overlay.appendChild(lbl);
 
-    // Vertical dashed line from top to bottom of chart
-    const line=document.createElementNS(svgNS,'line');
-    line.setAttribute('x1',xPx);line.setAttribute('y1',chartArea.top);
-    line.setAttribute('x2',xPx);line.setAttribute('y2',chartArea.bottom);
-    line.setAttribute('stroke','rgba(77,159,255,0.15)');
-    line.setAttribute('stroke-width','1');
-    line.setAttribute('stroke-dasharray','3,3');
+      events.push({xPx,type:'bolus',label:`💉 ${b.units}u bolus`,color:'#4d9fff',t:b.t});
+    });
+  }
 
-    overlay.appendChild(line);
-    overlay.appendChild(tri);
-    overlay.appendChild(label);
-  });
+  // ── MEAL markers ───────────────────────────────────────────────────────
+  if(showMeals){
+    filteredMeals.forEach(m=>{
+      const mT=m.t.getTime();
+      if(mT<minT||mT>maxT) return;
+      const xPx=xOf(mT);
+      const s=7; // diamond half-size
+
+      // Vertical dashed line (teal)
+      const line=document.createElementNS(svgNS,'line');
+      line.setAttribute('x1',xPx);line.setAttribute('y1',chartArea.top);
+      line.setAttribute('x2',xPx);line.setAttribute('y2',chartArea.bottom);
+      line.setAttribute('stroke','rgba(0,212,160,0.12)');
+      line.setAttribute('stroke-width','1');
+      line.setAttribute('stroke-dasharray','3,3');
+      overlay.appendChild(line);
+
+      // Diamond ◇ centered at MEAL_Y
+      const pts=`${xPx},${MEAL_Y-s} ${xPx+s},${MEAL_Y} ${xPx},${MEAL_Y+s} ${xPx-s},${MEAL_Y}`;
+      const dia=document.createElementNS(svgNS,'polygon');
+      dia.setAttribute('points',pts);
+      dia.setAttribute('fill','rgba(0,212,160,0.85)');
+      dia.setAttribute('stroke','rgba(0,212,160,0.4)');
+      dia.setAttribute('stroke-width','1');
+      overlay.appendChild(dia);
+
+      // Carb label below diamond
+      if(m.carbs>0){
+        const lbl=document.createElementNS(svgNS,'text');
+        lbl.setAttribute('x',xPx);
+        lbl.setAttribute('y',MEAL_Y+s+10);
+        lbl.setAttribute('text-anchor','middle');
+        lbl.setAttribute('fill','#00d4a0');
+        lbl.setAttribute('font-size','9');
+        lbl.setAttribute('font-weight','700');
+        lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+        lbl.textContent=m.carbs+'g';
+        overlay.appendChild(lbl);
+      }
+
+      events.push({xPx,type:'meal',label:`🍽️ ${m.carbs}g carbs`,color:'#00d4a0',t:m.t});
+    });
+  }
+
+  // ── Hover tooltip for events ───────────────────────────────────────────
+  // Attach mousemove to the SVG overlay itself
+  const SNAP_PX=24; // px radius to snap to an event
+  const tooltip=document.getElementById('event-tooltip');
+  if(!tooltip) return;
+
+  overlay.onmousemove=function(e){
+    const rect=overlay.getBoundingClientRect();
+    const mx=e.clientX-rect.left;
+    // Find closest event within snap radius
+    let best=null,bestD=SNAP_PX;
+    events.forEach(ev=>{
+      const d=Math.abs(ev.xPx-mx);
+      if(d<bestD){bestD=d;best=ev;}
+    });
+    if(best){
+      // Find all events within snap of this x (bolus+meal can coincide)
+      const nearby=events.filter(ev=>Math.abs(ev.xPx-mx)<SNAP_PX);
+      const lines=nearby.map(ev=>`<span style="color:${ev.color}">${ev.label}</span>`);
+      const time=best.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      tooltip.innerHTML=`<div style="font-size:10px;color:var(--text3);margin-bottom:4px">${best.t.toLocaleDateString([],{month:'short',day:'numeric'})} ${time}</div>${lines.join('<br>')}`;
+      const tipX=Math.min(best.xPx+rect.left-tooltip.offsetWidth/2, window.innerWidth-tooltip.offsetWidth-8);
+      tooltip.style.left=(tipX)+'px';
+      tooltip.style.top=(e.clientY-tooltip.offsetHeight-12)+'px';
+      tooltip.style.display='block';
+    } else {
+      tooltip.style.display='none';
+    }
+  };
+  overlay.onmouseleave=()=>{tooltip.style.display='none';};
 }
 
 function renderTIR(cgm){
