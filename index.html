@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -91,6 +90,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .upload-zone:hover{border-color:var(--accent)}
 .upload-zone h3{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text)}
 .upload-zone p{font-size:13px;color:var(--text3)}
+.day-nav{display:flex;align-items:center;gap:6px}
+.day-nav-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;padding:0}
+.day-nav-btn:hover{background:var(--surface);color:var(--accent);border-color:var(--accent)}
+.day-nav-label{font-size:12px;font-weight:600;color:var(--text);min-width:72px;text-align:center}
+.gluc-chart-wrap{position:relative;width:100%;height:240px}
+.bolus-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 @media print{
   .topbar-right,.range-tabs-row{display:none!important}
   .app{padding:8px}
@@ -133,113 +138,118 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
   <div id="dashboard" style="display:none">
 
-```
-<div class="range-tabs-row">
-  <div class="range-tabs" style="margin-bottom:0">
-    <button class="range-tab active" onclick="setRange(3,this)">3d</button>
-    <button class="range-tab" onclick="setRange(7,this)">7d</button>
-    <button class="range-tab" onclick="setRange(14,this)">14d</button>
-    <button class="range-tab" onclick="setRange(30,this)">30d</button>
-    <button class="range-tab" onclick="setRange(60,this)">60d</button>
-  </div>
-  <div class="custom-range">
-    <span>Custom:</span>
-    <input type="date" id="date-from"/>
-    <span>to</span>
-    <input type="date" id="date-to"/>
-    <button class="btn" onclick="applyCustomRange()">Apply</button>
-  </div>
-</div>
-
-<div class="metrics-wrap" id="metrics-wrap"></div>
-
-<div class="card">
-  <div class="card-title">Glucose trace (mg/dL)</div>
-  <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
-    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
-    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
-  </div>
-  <div style="position:relative;width:100%;height:240px">
-    <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
-  </div>
-</div>
-
-<div class="two-col">
-  <div class="card">
-    <div class="card-title">Time in range (70–150 mg/dL)</div>
-    <div id="tir-display"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">Average glucose by 3-hour block</div>
-    <div style="position:relative;width:100%;height:220px">
-      <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="two-col">
-  <div class="card">
-    <div class="card-title">Low events by 3-hour block (&lt;70)</div>
-    <div style="position:relative;width:100%;height:180px">
-      <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-title">High events by 3-hour block (&gt;150)</div>
-    <div style="position:relative;width:100%;height:180px">
-      <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="two-col">
-  <div class="card">
-    <div class="card-title">Overnight vs daytime TIR</div>
-    <div id="overnight-display"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">Post-meal glucose pattern</div>
-    <div id="postmeal-display"></div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-title">Day of week breakdown</div>
-  <div id="dow-display"></div>
-</div>
-
-<div class="card">
-  <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
-  <div style="display:flex;gap:12px;margin-bottom:10px">
-    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
-  </div>
-  <div style="position:relative;width:100%;height:220px">
-    <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
-  <div style="position:relative;width:100%;height:160px">
-    <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
-  </div>
-  <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
-</div>
-
-<div class="insights-dropdown">
-  <div class="insights-header" onclick="toggleInsights()">
-    <div class="insights-header-left">
-      <span style="font-size:16px">💡</span>
-      <div>
-        <div class="insights-title">Insights & recommendations</div>
-        <div class="insights-summary" id="insights-summary">Loading...</div>
+    <div class="range-tabs-row">
+      <div class="range-tabs" style="margin-bottom:0">
+        <button class="range-tab active" onclick="setRange(3,this)">3d</button>
+        <button class="range-tab" onclick="setRange(7,this)">7d</button>
+        <button class="range-tab" onclick="setRange(14,this)">14d</button>
+        <button class="range-tab" onclick="setRange(30,this)">30d</button>
+        <button class="range-tab" onclick="setRange(60,this)">60d</button>
+      </div>
+      <div class="day-nav">
+        <button class="day-nav-btn" onclick="shiftDay(-1)" title="Previous day">&#8249;</button>
+        <span class="day-nav-label" id="day-nav-label">Today</span>
+        <button class="day-nav-btn" onclick="shiftDay(1)" title="Next day">&#8250;</button>
+      </div>
+      <div class="custom-range">
+        <span>Custom:</span>
+        <input type="date" id="date-from"/>
+        <span>to</span>
+        <input type="date" id="date-to"/>
+        <button class="btn" onclick="applyCustomRange()">Apply</button>
       </div>
     </div>
-    <span class="insights-chevron" id="insights-chevron">▼</span>
-  </div>
-  <div class="insights-body" id="insights-body"></div>
-</div>
-```
+
+    <div class="metrics-wrap" id="metrics-wrap"></div>
+
+    <div class="card">
+      <div class="card-title">Glucose trace (mg/dL)</div>
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-bolus" onchange="renderGlucoseChart(filteredCGM)" checked> Bolus markers</label>
+      </div>
+      <div class="gluc-chart-wrap">
+        <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
+        <svg id="bolus-overlay" class="bolus-overlay"></svg>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Time in range (70–150 mg/dL)</div>
+        <div id="tir-display"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Average glucose by 3-hour block</div>
+        <div style="position:relative;width:100%;height:220px">
+          <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Low events by 3-hour block (&lt;70)</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">High events by 3-hour block (&gt;150)</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Overnight vs daytime TIR</div>
+        <div id="overnight-display"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Post-meal glucose pattern</div>
+        <div id="postmeal-display"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Day of week breakdown</div>
+      <div id="dow-display"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
+      <div style="display:flex;gap:12px;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
+      </div>
+      <div style="position:relative;width:100%;height:220px">
+        <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Insulin sensitivity — TDD/kg per day</div>
+      <div style="position:relative;width:100%;height:160px">
+        <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
+    </div>
+
+    <div class="insights-dropdown">
+      <div class="insights-header" onclick="toggleInsights()">
+        <div class="insights-header-left">
+          <span style="font-size:16px">💡</span>
+          <div>
+            <div class="insights-title">Insights & recommendations</div>
+            <div class="insights-summary" id="insights-summary">Loading...</div>
+          </div>
+        </div>
+        <span class="insights-chevron" id="insights-chevron">▼</span>
+      </div>
+      <div class="insights-body" id="insights-body"></div>
+    </div>
 
   </div>
 </div>
@@ -250,10 +260,11 @@ const ONEDRIVE_URL="https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL
 const LOW=70,HIGH=150,WEIGHT_KG=81.6;
 const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-let allCGM=[],allBoluses=[],allBasals=[];
-let filteredCGM=[],filteredBoluses=[],filteredBasals=[];
+let allCGM=[],allBoluses=[],allBasals=[],allMeals=[],allExercise=[];
+let filteredCGM=[],filteredBoluses=[],filteredBasals=[],filteredMeals=[],filteredExercise=[];
 let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null,hourlyHighChart=null;
 let currentDays=3;
+let customRangeActive=false;
 
 function fmtDate(t){return DAYS_SHORT[t.getDay()]+' '+t.toLocaleDateString([],{month:'short',day:'numeric'});}
 function dayKey(t){return fmtDate(t);}
@@ -324,12 +335,48 @@ function parseAndRender(csvText){
 }
 
 let customFrom=null,customTo=null;
+let dayNavOffset=0; // days offset from today for single-day view, null when not in day-nav mode
+let dayNavDate=null;
+
+function updateDayNavLabel(){
+  if(!dayNavDate){
+    document.getElementById('day-nav-label').textContent='Today';
+    return;
+  }
+  const now=new Date();
+  const diffMs=now.setHours(0,0,0,0)-new Date(dayNavDate).setHours(0,0,0,0);
+  const diffDays=Math.round(diffMs/86400000);
+  if(diffDays===0) document.getElementById('day-nav-label').textContent='Today';
+  else if(diffDays===1) document.getElementById('day-nav-label').textContent='Yesterday';
+  else document.getElementById('day-nav-label').textContent=dayNavDate.toLocaleDateString([],{month:'short',day:'numeric'});
+}
+
+function shiftDay(dir){
+  // If we're in a multi-day quick range, switch to day nav starting from today
+  if(!customFrom||!customTo||(customTo-customFrom)>86400001){
+    const today=new Date();today.setHours(0,0,0,0);
+    dayNavDate=new Date(today);
+  }
+  dayNavDate=new Date(dayNavDate.getTime()+dir*86400000);
+  // Don't go past today
+  const today=new Date();today.setHours(0,0,0,0);
+  if(dayNavDate>today) dayNavDate=new Date(today);
+  customFrom=new Date(dayNavDate);customFrom.setHours(0,0,0,0);
+  customTo=new Date(dayNavDate);customTo.setHours(23,59,59,999);
+  document.getElementById('date-from').value=customFrom.toISOString().split('T')[0];
+  document.getElementById('date-to').value=customTo.toISOString().split('T')[0];
+  document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
+  currentDays=1;
+  updateDayNavLabel();
+  renderAll();
+}
 
 function setRange(days,btn){
   currentDays=days;
-  customFrom=null;customTo=null;
+  customFrom=null;customTo=null;dayNavDate=null;
   document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
+  document.getElementById('day-nav-label').textContent='Today';
   renderAll();
 }
 
@@ -343,6 +390,9 @@ function applyCustomRange(){
   document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
   const diffDays=Math.round((customTo-customFrom)/86400000);
   currentDays=diffDays+1;
+  // Sync day nav
+  if(diffDays===0){dayNavDate=new Date(customFrom);updateDayNavLabel();}
+  else{dayNavDate=null;document.getElementById('day-nav-label').textContent='Custom';}
   renderAll();
 }
 
@@ -425,7 +475,7 @@ function renderMetrics(cgm,boluses,basals){
       <div class="metrics-row">
         <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
         <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:#378ADD">${pBolus}%</span><span class="unit"> / </span><span style="color:#7F77DD">${pBasal}%</span></div></div>
+        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:var(--blue)">${pBolus}%</span><span class="unit"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
       </div>
     </div>
   `;
@@ -437,6 +487,7 @@ function renderGlucoseChart(cgm){
   const grid='rgba(255,255,255,0.05)';
   const showBand=document.getElementById('show-band')?.checked;
   const showDots=document.getElementById('show-dots')?.checked;
+  const showBolus=document.getElementById('show-bolus')?.checked;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
   const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
@@ -451,6 +502,11 @@ function renderGlucoseChart(cgm){
       pointBackgroundColor:s.map(d=>d.v<LOW?'#ff4d6d':'#ffb347'),
       pointBorderColor:'transparent',fill:false,tension:0});
   }
+
+  // Clear bolus overlay while chart is rendering
+  const overlay=document.getElementById('bolus-overlay');
+  if(overlay) overlay.innerHTML='';
+
   glucChart=new Chart(document.getElementById('glucChart'),{
     type:'line',data:{labels:s.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),datasets},
     options:{responsive:true,maintainAspectRatio:false,
@@ -459,7 +515,82 @@ function renderGlucoseChart(cgm){
       scales:{
         x:{ticks:{maxTicksLimit:10,color:'#505058',font:{size:10}},grid:{color:grid}},
         y:{min:40,max:250,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
+      },
+      animation:{onComplete:()=>{
+        if(showBolus) renderBolusOverlay(glucChart,s);
       }}
+    }
+  });
+}
+
+function renderBolusOverlay(chart,cgmSampled){
+  const overlay=document.getElementById('bolus-overlay');
+  if(!overlay||!chart) return;
+  overlay.innerHTML='';
+
+  // Only manual boluses ≥0.5u
+  const manualBoluses=filteredBoluses.filter(b=>b.units>=0.5);
+  if(!manualBoluses.length) return;
+
+  const {scales:{x,y},chartArea}=chart;
+  if(!chartArea) return;
+
+  const minT=cgmSampled[0]?.t?.getTime();
+  const maxT=cgmSampled[cgmSampled.length-1]?.t?.getTime();
+  if(!minT||!maxT) return;
+  const tRange=maxT-minT;
+
+  const svgNS='http://www.w3.org/2000/svg';
+  const maxUnits=Math.max(...manualBoluses.map(b=>b.units));
+
+  manualBoluses.forEach(b=>{
+    const bT=b.t.getTime();
+    if(bT<minT||bT>maxT) return;
+
+    // X position: proportional across chart area
+    const xPct=(bT-minT)/tRange;
+    const xPx=chartArea.left+xPct*(chartArea.right-chartArea.left);
+
+    // Size scaled by units (min 5px, max 10px radius)
+    const r=5+Math.round((b.units/Math.max(maxUnits,1))*5);
+    const triH=r*2;
+    const triW=r*1.6;
+
+    // Triangle at bottom of chart area (pointing down = insulin going down)
+    const baseY=chartArea.bottom-4;
+    const tipY=baseY+triH;
+
+    // Triangle points: top-left, top-right, tip
+    const pts=`${xPx-triW/2},${baseY} ${xPx+triW/2},${baseY} ${xPx},${tipY}`;
+
+    const tri=document.createElementNS(svgNS,'polygon');
+    tri.setAttribute('points',pts);
+    tri.setAttribute('fill','rgba(77,159,255,0.9)');
+    tri.setAttribute('stroke','rgba(77,159,255,0.3)');
+    tri.setAttribute('stroke-width','1');
+
+    // Tooltip-style label
+    const label=document.createElementNS(svgNS,'text');
+    label.setAttribute('x',xPx);
+    label.setAttribute('y',baseY-6);
+    label.setAttribute('text-anchor','middle');
+    label.setAttribute('fill','#4d9fff');
+    label.setAttribute('font-size','10');
+    label.setAttribute('font-weight','600');
+    label.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+    label.textContent=b.units+'u';
+
+    // Vertical dashed line from top to bottom of chart
+    const line=document.createElementNS(svgNS,'line');
+    line.setAttribute('x1',xPx);line.setAttribute('y1',chartArea.top);
+    line.setAttribute('x2',xPx);line.setAttribute('y2',chartArea.bottom);
+    line.setAttribute('stroke','rgba(77,159,255,0.15)');
+    line.setAttribute('stroke-width','1');
+    line.setAttribute('stroke-dasharray','3,3');
+
+    overlay.appendChild(line);
+    overlay.appendChild(tri);
+    overlay.appendChild(label);
   });
 }
 
@@ -467,11 +598,11 @@ function renderTIR(cgm){
   const vals=cgm.map(d=>d.v);
   const counts=[vals.filter(v=>v<54).length,vals.filter(v=>v>=54&&v<LOW).length,vals.filter(v=>v>=LOW&&v<=HIGH).length,vals.filter(v=>v>HIGH&&v<=250).length,vals.filter(v=>v>250).length];
   const p=counts.map(c=>Math.round(c/vals.length*100));
-  const segs=[['#c81c1c','Very low','<54 mg/dL — serious hypoglycemia, seizure risk','<1%'],
-    ['#E24B4A','Low','54–69 mg/dL — symptomatic hypoglycemia','<2% (elite)'],
-    ['#4a9e1a','In range','70–150 mg/dL — your personal target range','>85% (elite)'],
-    ['#F0A500','High','150–250 mg/dL — hyperglycemia, long-term risk','<15% (elite)'],
-    ['#c47000','Very high','>250 mg/dL — DKA risk if sustained','<1%']];
+  const segs=[['#e63a55','Very low','<54 mg/dL — serious hypoglycemia, seizure risk','<1%'],
+    ['#ff4d6d','Low','54–69 mg/dL — symptomatic hypoglycemia','<2% (elite)'],
+    ['#00d4a0','In range','70–150 mg/dL — your personal target range','>85% (elite)'],
+    ['#ffb347','High','150–250 mg/dL — hyperglycemia, long-term risk','<15% (elite)'],
+    ['#e8963a','Very high','>250 mg/dL — DKA risk if sustained','<1%']];
   const barSegs=segs.map((s,i)=>`<div class="tir-seg" style="width:${p[i]}%;background:${s[0]};min-width:${p[i]>0?'4px':'0'}">${p[i]>=8?p[i]+'%':''}</div>`).join('');
   const rows=segs.map((s,i)=>`
     <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2);margin-bottom:6px">
@@ -488,7 +619,7 @@ function renderHourlyAvg(cgm){
   cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
   const avgs=blocks.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(74,158,26,0.85)':d<=20?'rgba(99,153,34,0.75)':d<=35?'rgba(240,165,0,0.8)':'rgba(226,75,74,0.85)';});
+  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(0,212,160,0.85)':d<=20?'rgba(0,190,140,0.75)':d<=35?'rgba(255,179,71,0.8)':'rgba(226,75,74,0.85)';});
   
   const grid='rgba(255,255,255,0.05)';
   const lc='rgba(240,240,240,0.85)';
@@ -545,7 +676,7 @@ function renderTDDChart(boluses,basals){
     const n=totalData.length,xM=(n-1)/2,yM=totalData.reduce((a,b)=>a+b,0)/n;
     let num=0,den=0;totalData.forEach((y,i)=>{num+=(i-xM)*(y-yM);den+=(i-xM)**2;});
     const slope=den?num/den:0,inter=yM-slope*xM;
-    datasets.push({label:'Trend',data:totalData.map((_,i)=>Math.round((slope*i+inter)*10)/10),type:'line',borderColor:'#E24B4A',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined,datalabels:{display:false}});
+    datasets.push({label:'Trend',data:totalData.map((_,i)=>Math.round((slope*i+inter)*10)/10),type:'line',borderColor:'#ff4d6d',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,stack:undefined,datalabels:{display:false}});
   }
   tddChart=new Chart(document.getElementById('tddChart'),{
     type:'bar',data:{labels,datasets},plugins:[totalLabelPlugin],
@@ -614,14 +745,14 @@ function tirBar(tir,low,high,n){
   const inR=tir,lo=low,hi=high,vLo=0,vHi=0;
   return`<div style="margin:10px 0 6px">
     <div style="display:flex;height:28px;border-radius:8px;overflow:hidden">
-      <div style="width:${lo}%;background:#E24B4A;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${lo>0?'4px':'0'}">${lo>=8?lo+'%':''}</div>
-      <div style="width:${inR}%;background:#4a9e1a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${inR>0?'4px':'0'}">${inR>=8?inR+'%':''}</div>
-      <div style="width:${hi}%;background:#F0A500;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${hi>0?'4px':'0'}">${hi>=8?hi+'%':''}</div>
+      <div style="width:${lo}%;background:#ff4d6d;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${lo>0?'4px':'0'}">${lo>=8?lo+'%':''}</div>
+      <div style="width:${inR}%;background:#00d4a0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${inR>0?'4px':'0'}">${inR>=8?inR+'%':''}</div>
+      <div style="width:${hi}%;background:#ffb347;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:${hi>0?'4px':'0'}">${hi>=8?hi+'%':''}</div>
     </div>
     <div style="display:flex;gap:12px;margin-top:5px;font-size:11px">
-      <span style="color:#A32D2D">Low ${lo}%</span>
-      <span style="color:#3B6D11;font-weight:600">In range ${inR}%</span>
-      <span style="color:#854F0B">High ${hi}%</span>
+      <span style="color:#ff4d6d">Low ${lo}%</span>
+      <span style="color:#00d4a0;font-weight:600">In range ${inR}%</span>
+      <span style="color:#ffb347">High ${hi}%</span>
       <span style="color:var(--text3);margin-left:auto">${n} readings</span>
     </div>
   </div>`;
@@ -642,15 +773,15 @@ function renderOvernightVsDaytime(cgm){
   const on=stats(overnight),da=stats(daytime);
   function row(label,s,icon){
     if(!s) return'';
-    const tirCls=s.tir>=85?'#3B6D11':s.tir>=70?'#854F0B':'#A32D2D';
-    const avgCls=s.avg<=110?'#3B6D11':s.avg<=130?'var(--text)':'#854F0B';
+    const tirCls=s.tir>=85?'#00d4a0':s.tir>=70?'#ffb347':'#ff4d6d';
+    const avgCls=s.avg<=110?'#00d4a0':s.avg<=130?'var(--text)':'#ffb347';
     return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
       <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:10px">${icon} ${label}</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap">
         <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Avg BG</div><div style="font-size:22px;font-weight:700;color:${avgCls}">${s.avg}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
         <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">TIR</div><div style="font-size:22px;font-weight:700;color:${tirCls}">${s.tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Low</div><div style="font-size:22px;font-weight:700;color:#A32D2D">${s.low}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">High</div><div style="font-size:22px;font-weight:700;color:#854F0B">${s.high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Low</div><div style="font-size:22px;font-weight:700;color:#ff4d6d">${s.low}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">High</div><div style="font-size:22px;font-weight:700;color:#ffb347">${s.high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
       </div>
     </div>`;
   }
@@ -670,15 +801,15 @@ function renderPostMeal(cgm){
     const sorted=vals.slice().sort((a,b)=>b-a);
     const top10=sorted.slice(0,Math.max(1,Math.floor(sorted.length*0.1)));
     const avgPeak=Math.round(top10.reduce((a,b)=>a+b,0)/top10.length);
-    const peakCls=avgPeak>HIGH?'#854F0B':'#3B6D11';
-    const tirCls=tir>=85?'#3B6D11':tir>=70?'#854F0B':'#A32D2D';
-    const avgCls=avg<=110?'#3B6D11':avg<=130?'var(--text)':'#854F0B';
+    const peakCls=avgPeak>HIGH?'#ffb347':'#00d4a0';
+    const tirCls=tir>=85?'#00d4a0':tir>=70?'#ffb347':'#ff4d6d';
+    const avgCls=avg<=110?'#00d4a0':avg<=130?'var(--text)':'#ffb347';
     return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
       <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:10px">${icon} ${label}</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap">
         <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Avg BG</div><div style="font-size:22px;font-weight:700;color:${avgCls}">${avg}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
         <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">TIR</div><div style="font-size:22px;font-weight:700;color:${tirCls}">${tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">High</div><div style="font-size:22px;font-weight:700;color:#854F0B">${high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">High</div><div style="font-size:22px;font-weight:700;color:#ffb347">${high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
         <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Avg peak</div><div style="font-size:22px;font-weight:700;color:${peakCls}">${avgPeak}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
       </div>
     </div>`;
@@ -706,12 +837,12 @@ function renderDayOfWeek(cgm,boluses,basals){
     return{dow:parseInt(dow),name:DAYS_FULL[dow],short:DAYS_SHORT[dow],avg,tir,low,high,tdd,n:d.vals.length,numDays};
   }).sort((a,b)=>b.tir-a.tir);
 
-  const rankColors=['#4a9e1a','#5a8a20','#888780','#F0A500','#E24B4A','#c81c1c','#7f1d1d'];
-  const tirBg=t=>t>=85?'rgba(74,158,26,0.12)':t>=70?'rgba(240,165,0,0.12)':'rgba(226,75,74,0.12)';
-  const tirBorder=t=>t>=85?'#4a9e1a':t>=70?'#F0A500':'#E24B4A';
+  const rankColors=['#00d4a0','#00b88a','#606068','#ffb347','#ff4d6d','#e63a55','#c82a45'];
+  const tirBg=t=>t>=85?'rgba(0,212,160,0.1)':t>=70?'rgba(255,179,71,0.12)':'rgba(255,77,109,0.12)';
+  const tirBorder=t=>t>=85?'#00d4a0':t>=70?'#ffb347':'#ff4d6d';
 
   const cards=rows.map((r,i)=>{
-    const avgCls=r.avg<=110?'#3B6D11':r.avg<=130?'var(--text)':'#854F0B';
+    const avgCls=r.avg<=110?'#00d4a0':r.avg<=130?'var(--text)':'#ffb347';
     return`<div style="background:${tirBg(r.tir)};border:1px solid ${tirBorder(r.tir)};border-radius:var(--radius);padding:14px;position:relative">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px">
@@ -721,9 +852,9 @@ function renderDayOfWeek(cgm,boluses,basals){
         <span style="font-size:11px;color:var(--text3)">${r.numDays} ${r.numDays===1?'day':'days'}</span>
       </div>
       <div style="display:flex;height:20px;border-radius:6px;overflow:hidden;margin-bottom:6px">
-        <div style="width:${r.low}%;background:#E24B4A;min-width:${r.low>0?'3px':'0'}"></div>
-        <div style="width:${r.tir}%;background:#4a9e1a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">${r.tir>=15?r.tir+'%':''}</div>
-        <div style="width:${r.high}%;background:#F0A500;min-width:${r.high>0?'3px':'0'}"></div>
+        <div style="width:${r.low}%;background:#ff4d6d;min-width:${r.low>0?'3px':'0'}"></div>
+        <div style="width:${r.tir}%;background:#00d4a0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">${r.tir>=15?r.tir+'%':''}</div>
+        <div style="width:${r.high}%;background:#ffb347;min-width:${r.high>0?'3px':'0'}"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:4px">
         <div style="text-align:center"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">TIR</div><div style="font-size:20px;font-weight:700;color:${tirBorder(r.tir)}">${r.tir}<span style="font-size:11px;font-weight:400">%</span></div></div>
@@ -912,6 +1043,5 @@ async function exportPDF(){
 
 loadFromOneDrive();
 </script>
-
 </body>
 </html>
