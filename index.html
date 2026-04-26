@@ -98,8 +98,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .day-nav-btn:hover{background:var(--surface);color:var(--accent);border-color:var(--accent)}
 .day-nav-label{font-size:12px;font-weight:600;color:var(--text);min-width:72px;text-align:center}
 
-/* ── GLUCOSE CHART WRAP — extra bottom space for bolus bars ─── */
-.gluc-chart-wrap{position:relative;width:100%;height:400px}
+/* ── GLUCOSE CHART WRAP ─────────────────────────────────────── */
+.gluc-chart-wrap{position:relative;width:100%;height:380px}
 .bolus-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 
 /* ── UNIFIED TOOLTIP ─────────────────────────────────────────── */
@@ -190,7 +190,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
       </div>
       <div class="gluc-chart-wrap">
-        <canvas id="glucChart" role="img" aria-label="Glucose trace"></canvas>
+        <!-- Glucose plot: top 260px -->
+        <div style="position:absolute;top:0;left:0;width:100%;height:260px">
+          <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
+        </div>
+        <!-- SVG overlay spans full wrap height (meals on top zone, bolus bars on bottom zone) -->
         <svg id="bolus-overlay" class="bolus-overlay" style="pointer-events:all"></svg>
       </div>
     </div>
@@ -543,11 +547,6 @@ function renderGlucoseChart(cgm){
   const overlay=document.getElementById('bolus-overlay');
   if(overlay) overlay.innerHTML='';
 
-  // ── BOLUS BAR HEIGHT CONFIG ─────────────────────────────────────
-  // We'll reserve space at the bottom; Chart.js y-axis starts at 40.
-  // We extend the chart area downward by reserving a virtual "bolus zone"
-  // below the axis. We handle this purely in the SVG overlay.
-
   glucChart=new Chart(document.getElementById('glucChart'),{
     type:'line',
     data:{
@@ -560,21 +559,11 @@ function renderGlucoseChart(cgm){
       plugins:{
         legend:{display:false},
         datalabels:{display:false},
-        tooltip:{
-          enabled:false  // We handle tooltip entirely ourselves
-        }
+        tooltip:{enabled:false}
       },
       scales:{
-        x:{
-          ticks:{maxTicksLimit:10,color:'#505058',font:{size:10}},
-          grid:{color:grid},
-          afterFit(scale){scale.height+=90;}  // push plot area up, creating room for bolus bars
-        },
-        y:{
-          min:40,max:225,
-          ticks:{color:'#505058',font:{size:10}},
-          grid:{color:grid}
-        }
+        x:{ticks:{maxTicksLimit:10,color:'#505058',font:{size:10}},grid:{color:grid}},
+        y:{min:40,max:225,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
       },
       animation:{onComplete:()=>{
         renderEventOverlay(glucChart,s,showBolus,showMeals,filteredMeals,filteredBoluses);
@@ -603,154 +592,127 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
   const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
   const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
 
-  // Bolus zone: between bottom of plot area and bottom of SVG element
-  // chartArea.bottom = bottom of the glucose plot
-  // overlay.clientHeight = full height of .gluc-chart-wrap (400px)
-  const svgH=overlay.clientHeight||400;
-  const BOLUS_ZONE_TOP=chartArea.bottom+8;   // small gap below x-axis labels
-  const BOLUS_ZONE_BOT=svgH-4;
-  const BOLUS_ZONE_H=Math.max(BOLUS_ZONE_BOT-BOLUS_ZONE_TOP,50);
+  // Two-zone geometry:
+  // - Glucose canvas is absolutely positioned at top:0, height:260px inside .gluc-chart-wrap
+  // - SVG overlay covers full .gluc-chart-wrap (380px)
+  // - chartArea.bottom = bottom of glucose plot area (within the canvas, so ≤260)
+  // - Bolus zone = chartArea.bottom → SVG bottom (the extra 120px below glucose canvas)
+  const SVG_H = overlay.clientHeight || 380;
+  const BOLUS_TOP = chartArea.bottom;   // starts right at glucose plot bottom
+  const BOLUS_BOT = SVG_H - 2;
+  const BOLUS_H = Math.max(BOLUS_BOT - BOLUS_TOP, 60);
 
-  // Lookup: nearest glucose in full-res data
   function glucAtTime(ts){
     let best=null,bestD=Infinity;
-    filteredCGM.forEach(d=>{
-      const d2=Math.abs(d.t.getTime()-ts);
-      if(d2<bestD){bestD=d2;best=d.v;}
-    });
+    filteredCGM.forEach(d=>{const d2=Math.abs(d.t.getTime()-ts);if(d2<bestD){bestD=d2;best=d.v;}});
     return best;
   }
 
-  // Store hit rects for tooltip zone detection
-  const bolusHitRects=[];  // {x1,y1,x2,y2,units,t}
-  const mealHitRects=[];   // {x1,y1,x2,y2,carbs,t}
+  const bolusHitRects=[];
+  const mealHitRects=[];
 
-  // ── BOLUS BARS ───────────────────────────────────────────────
+  // ── BOLUS BARS (grow from SVG bottom upward) ─────────────────
   if(showBolus && boluses && boluses.length){
-    const visibleBoluses=boluses.filter(b=>b.units>=0.5);
-    if(visibleBoluses.length){
-      const maxU=Math.max(...visibleBoluses.map(b=>b.units),1);
-
-      visibleBoluses.forEach(b=>{
+    const vis=boluses.filter(b=>b.units>=0.5);
+    if(vis.length){
+      const maxU=Math.max(...vis.map(b=>b.units),1);
+      vis.forEach(b=>{
         const bT=b.t.getTime();
         if(bT<minT||bT>maxT) return;
         const xPx=xOf(bT);
         const units=roundTenth(b.units);
-
-        const barH=Math.max(12,Math.round((units/maxU)*BOLUS_ZONE_H));
+        const barH=Math.max(14,Math.round((units/maxU)*BOLUS_H));
         const barW=Math.min(8,(chartArea.right-chartArea.left)*0.012);
         const barX=xPx-barW/2;
-        const barY=BOLUS_ZONE_BOT-barH;
+        const barTopY=BOLUS_BOT-barH;  // top of bar, growing from bottom
 
-        // Dashed guide line through glucose area only
-        const line=document.createElementNS(svgNS,'line');
-        line.setAttribute('x1',xPx);line.setAttribute('y1',chartArea.top);
-        line.setAttribute('x2',xPx);line.setAttribute('y2',chartArea.bottom);
-        line.setAttribute('stroke','rgba(77,159,255,0.10)');
-        line.setAttribute('stroke-width','1');
-        line.setAttribute('stroke-dasharray','3,4');
-        overlay.appendChild(line);
+        // Opaque portion in bolus zone
+        const solidTop=Math.max(barTopY,BOLUS_TOP);
+        if(solidTop<BOLUS_BOT){
+          const r=document.createElementNS(svgNS,'rect');
+          r.setAttribute('x',barX);r.setAttribute('y',solidTop);
+          r.setAttribute('width',barW);r.setAttribute('height',BOLUS_BOT-solidTop);
+          r.setAttribute('rx','2');r.setAttribute('fill','rgba(77,159,255,0.78)');
+          r.setAttribute('stroke','rgba(77,159,255,0.4)');r.setAttribute('stroke-width','0.5');
+          overlay.appendChild(r);
+        }
 
-        // Bar
-        const rect=document.createElementNS(svgNS,'rect');
-        rect.setAttribute('x',barX);
-        rect.setAttribute('y',barY);
-        rect.setAttribute('width',barW);
-        rect.setAttribute('height',barH);
-        rect.setAttribute('rx','3');
-        rect.setAttribute('fill','rgba(77,159,255,0.78)');
-        rect.setAttribute('stroke','rgba(77,159,255,0.4)');
-        rect.setAttribute('stroke-width','1');
-        overlay.appendChild(rect);
+        // Transparent portion if bar extends into glucose area
+        if(barTopY<BOLUS_TOP){
+          const r2=document.createElementNS(svgNS,'rect');
+          r2.setAttribute('x',barX);r2.setAttribute('y',barTopY);
+          r2.setAttribute('width',barW);r2.setAttribute('height',BOLUS_TOP-barTopY);
+          r2.setAttribute('rx','2');r2.setAttribute('fill','rgba(77,159,255,0.2)');
+          r2.setAttribute('stroke','none');
+          overlay.appendChild(r2);
+        }
 
         // Label
         const lbl=document.createElementNS(svgNS,'text');
-        lbl.setAttribute('x',xPx);
-        lbl.setAttribute('font-size','9');
-        lbl.setAttribute('font-weight','700');
-        lbl.setAttribute('text-anchor','middle');
+        lbl.setAttribute('x',xPx);lbl.setAttribute('font-size','9');
+        lbl.setAttribute('font-weight','700');lbl.setAttribute('text-anchor','middle');
         lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-        if(barH>=16){
-          lbl.setAttribute('y',barY+11);
-          lbl.setAttribute('fill','rgba(255,255,255,0.95)');
-        } else {
-          lbl.setAttribute('y',barY-3);
-          lbl.setAttribute('fill','#4d9fff');
-        }
+        const lblY=solidTop>=BOLUS_TOP+14 ? solidTop+11 : Math.max(barTopY-3, chartArea.top+10);
+        lbl.setAttribute('y',lblY);
+        lbl.setAttribute('fill', lblY>solidTop ? 'rgba(255,255,255,0.95)' : '#4d9fff');
         lbl.textContent=units+'u';
         overlay.appendChild(lbl);
 
-        // Store hit rect (generous: ±12px around bar center)
-        bolusHitRects.push({x1:xPx-12,y1:BOLUS_ZONE_TOP,x2:xPx+12,y2:BOLUS_ZONE_BOT,units,t:b.t});
+        bolusHitRects.push({x1:xPx-12,y1:BOLUS_TOP,x2:xPx+12,y2:BOLUS_BOT,units,t:b.t});
       });
     }
   }
 
-  // ── MEAL MARKERS ─────────────────────────────────────────────
+  // ── MEAL PILLS (on glucose trace) ─────────────────────────────
   if(showMeals && meals && meals.length){
     meals.forEach(m=>{
       const mT=m.t.getTime();
       if(mT<minT||mT>maxT) return;
       const xPx=xOf(mT);
       const gluc=glucAtTime(mT);
-      // Clamp glucose to y-scale range
-      const glucClamped=gluc!=null?Math.min(Math.max(gluc,40),225):null;
-      const yG=glucClamped!=null?yOfGluc(glucClamped):chartArea.top+40;
+      const glucC=gluc!=null?Math.min(Math.max(gluc,40),225):null;
+      const yG=glucC!=null?yOfGluc(glucC):(chartArea.top+chartArea.bottom)/2;
 
-      const labelText=m.carbs>0?m.carbs+'g':'meal';
-      const PILL_W=Math.max(28, labelText.length*6+12);
-      const PILL_H=17;
-      const GAP=8; // px above the glucose dot
-      const rawPillY=yG-PILL_H-GAP;
-      const PILL_Y=Math.max(chartArea.top+2, rawPillY);
-      const PILL_X=xPx-PILL_W/2;
+      const label=m.carbs>0?m.carbs+'g':'meal';
+      const PW=Math.max(28,label.length*6+12);
+      const PH=17;
+      const PY=Math.max(chartArea.top+2, yG-PH-8);
+      const PX=xPx-PW/2;
 
-      // Connector
-      if(PILL_Y+PILL_H < yG-1){
-        const conn=document.createElementNS(svgNS,'line');
-        conn.setAttribute('x1',xPx);conn.setAttribute('y1',PILL_Y+PILL_H);
-        conn.setAttribute('x2',xPx);conn.setAttribute('y2',yG);
-        conn.setAttribute('stroke','rgba(0,212,160,0.5)');
-        conn.setAttribute('stroke-width','1');
-        conn.setAttribute('stroke-dasharray','2,2');
-        overlay.appendChild(conn);
+      if(PY+PH<yG-1){
+        const c=document.createElementNS(svgNS,'line');
+        c.setAttribute('x1',xPx);c.setAttribute('y1',PY+PH);
+        c.setAttribute('x2',xPx);c.setAttribute('y2',yG);
+        c.setAttribute('stroke','rgba(0,212,160,0.55)');
+        c.setAttribute('stroke-width','1');c.setAttribute('stroke-dasharray','2,2');
+        overlay.appendChild(c);
       }
 
-      // Dot on trace
       const dot=document.createElementNS(svgNS,'circle');
       dot.setAttribute('cx',xPx);dot.setAttribute('cy',yG);dot.setAttribute('r','4');
-      dot.setAttribute('fill','#00d4a0');dot.setAttribute('stroke','rgba(0,0,0,0.3)');
-      dot.setAttribute('stroke-width','1');
+      dot.setAttribute('fill','#00d4a0');dot.setAttribute('stroke','rgba(0,0,0,0.4)');dot.setAttribute('stroke-width','1');
       overlay.appendChild(dot);
 
-      // Pill background
       const pill=document.createElementNS(svgNS,'rect');
-      pill.setAttribute('x',PILL_X);pill.setAttribute('y',PILL_Y);
-      pill.setAttribute('width',PILL_W);pill.setAttribute('height',PILL_H);
-      pill.setAttribute('rx','5');
-      pill.setAttribute('fill','rgba(0,30,20,0.85)');
-      pill.setAttribute('stroke','rgba(0,212,160,0.7)');
-      pill.setAttribute('stroke-width','1.5');
+      pill.setAttribute('x',PX);pill.setAttribute('y',PY);
+      pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(0,25,18,0.92)');
+      pill.setAttribute('stroke','#00d4a0');pill.setAttribute('stroke-width','1.5');
       overlay.appendChild(pill);
 
-      // Pill text
-      const lbl=document.createElementNS(svgNS,'text');
-      lbl.setAttribute('x',xPx);
-      lbl.setAttribute('y',PILL_Y+PILL_H-4);
-      lbl.setAttribute('text-anchor','middle');
-      lbl.setAttribute('fill','#00d4a0');
-      lbl.setAttribute('font-size','9');
-      lbl.setAttribute('font-weight','700');
-      lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-      lbl.textContent=labelText;
-      overlay.appendChild(lbl);
+      const lt=document.createElementNS(svgNS,'text');
+      lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);
+      lt.setAttribute('text-anchor','middle');lt.setAttribute('fill','#00d4a0');
+      lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+      lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+      lt.textContent=label;
+      overlay.appendChild(lt);
 
-      // Hit rect covers pill + connector + dot
-      mealHitRects.push({x1:PILL_X-4,y1:PILL_Y,x2:PILL_X+PILL_W+4,y2:yG+4,carbs:m.carbs,t:m.t});
+      mealHitRects.push({x1:PX-4,y1:PY,x2:PX+PW+4,y2:yG+5,carbs:m.carbs,t:m.t});
     });
   }
 
-  // ── Tooltip ──────────────────────────────────────────────────
+  // ── Tooltip ───────────────────────────────────────────────────
   const tooltip=document.getElementById('event-tooltip');
   if(!tooltip) return;
 
@@ -758,63 +720,31 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
     const frac=(xPx-chartArea.left)/(chartArea.right-chartArea.left);
     const ts=minT+frac*tRange;
     let best=null,bestD=Infinity;
-    filteredCGM.forEach(d=>{
-      const d2=Math.abs(d.t.getTime()-ts);
-      if(d2<bestD){bestD=d2;best=d;}
-    });
+    filteredCGM.forEach(d=>{const d2=Math.abs(d.t.getTime()-ts);if(d2<bestD){bestD=d2;best=d;}});
     return best;
   }
 
   function showTooltip(e,mx,my){
     if(mx<chartArea.left||mx>chartArea.right){tooltip.style.display='none';return;}
-
     const nearest=getNearestGluc(mx);
     if(!nearest){tooltip.style.display='none';return;}
-
-    const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+
-      ' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    const glucColor=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH?'#ffb347':'#00d4a0';
-
+    const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const gc=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH?'#ffb347':'#00d4a0';
     let html=`<div class="tt-time">${timeStr}</div>`;
-    html+=`<div class="tt-gluc" style="color:${glucColor}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
-
-    // Bolus: only when cursor is physically inside the bolus hit rect
-    bolusHitRects.forEach(r=>{
-      if(mx>=r.x1&&mx<=r.x2&&my>=r.y1&&my<=r.y2){
-        html+=`<div class="tt-row"><span style="color:#4d9fff">💉 ${r.units}u bolus</span></div>`;
-      }
-    });
-
-    // Meal: only when cursor is near the pill or dot
-    mealHitRects.forEach(r=>{
-      if(mx>=r.x1&&mx<=r.x2&&my>=r.y1&&my<=r.y2){
-        html+=`<div class="tt-row"><span style="color:#00d4a0">🍽️ ${r.carbs}g carbs</span></div>`;
-      }
-    });
-
+    html+=`<div class="tt-gluc" style="color:${gc}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
+    bolusHitRects.forEach(r=>{if(mx>=r.x1&&mx<=r.x2&&my>=r.y1&&my<=r.y2) html+=`<div class="tt-row"><span style="color:#4d9fff">💉 ${r.units}u bolus</span></div>`;});
+    mealHitRects.forEach(r=>{if(mx>=r.x1&&mx<=r.x2&&my>=r.y1&&my<=r.y2) html+=`<div class="tt-row"><span style="color:#00d4a0">🍽️ ${r.carbs}g carbs</span></div>`;});
     tooltip.innerHTML=html;
-    const tipW=tooltip.offsetWidth||140;
-    const tipH=tooltip.offsetHeight||60;
-    let tipLeft=e.clientX-tipW/2;
-    let tipTop=e.clientY-tipH-16;
-    tipLeft=Math.max(8,Math.min(tipLeft,window.innerWidth-tipW-8));
-    tipTop=Math.max(8,tipTop);
-    tooltip.style.left=tipLeft+'px';
-    tooltip.style.top=tipTop+'px';
-    tooltip.style.display='block';
+    const tw=tooltip.offsetWidth||140,th=tooltip.offsetHeight||60;
+    let tl=e.clientX-tw/2,tt2=e.clientY-th-16;
+    tl=Math.max(8,Math.min(tl,window.innerWidth-tw-8));tt2=Math.max(8,tt2);
+    tooltip.style.left=tl+'px';tooltip.style.top=tt2+'px';tooltip.style.display='block';
   }
 
-  overlay.onmousemove=function(e){
-    const rect=overlay.getBoundingClientRect();
-    showTooltip(e,e.clientX-rect.left,e.clientY-rect.top);
-  };
+  overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left,e.clientY-r.top);};
   overlay.onmouseleave=()=>{tooltip.style.display='none';};
-
   const canvas=document.getElementById('glucChart');
-  canvas.onmousemove=function(e){
-    const rect=overlay.getBoundingClientRect();
-    showTooltip(e,e.clientX-rect.left,e.clientY-rect.top);
-  };
+  canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left,e.clientY-r.top);};
   canvas.onmouseleave=()=>{tooltip.style.display='none';};
 }
 
@@ -827,7 +757,7 @@ function renderTIR(cgm){
     ['#00d4a0','In range','70–150 mg/dL — your personal target range','>85% (elite)'],
     ['#ffb347','High','150–250 mg/dL — hyperglycemia, long-term risk','<15% (elite)'],
     ['#e8963a','Very high','>250 mg/dL — DKA risk if sustained','<1%']];
-  const barSegs=segs.map((s,i)=>`<div class="tir-seg" style="width:${p[i]}%;background:${s[0]};min-width:${p[i]>0?'4px':'0'}">${p[i]>=8?p[i]+'%':''}</div>`).join('');
+  const barSegs=segs.map((s,i)=>`<div class="tir-seg" style="width:${p[i]}%;background:${s[0]};min-width:${p[i]>0?'4px':'0'}">${p[i]>=8?`<span style="color:rgba(0,0,0,0.75);text-shadow:none">${p[i]}%</span>`:''}</div>`).join('');
   const rows=segs.map((s,i)=>`
     <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2);margin-bottom:6px">
       <span class="tir-dot" style="background:${s[0]};margin-top:3px;flex-shrink:0"></span>
@@ -1115,9 +1045,9 @@ function renderDayOfWeek(cgm,boluses,basals){
         <div style="width:${r.high}%;background:#ffb347;min-width:${r.high>0?'3px':'0'}"></div>
       </div>
       <div style="display:flex;justify-content:space-between">
-        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">TIR</div><div style="font-size:20px;font-weight:700;color:${tirTextColor};letter-spacing:-0.5px">${r.tir}<span style="font-size:10px;font-weight:400">%</span></div></div>
-        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">Avg BG</div><div style="font-size:20px;font-weight:700;color:${avgCls};letter-spacing:-0.5px">${r.avg}</div></div>
-        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">TDD</div><div style="font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px">${r.tdd}<span style="font-size:10px;font-weight:400;color:var(--text3)">u</span></div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">TIR</div><div style="font-size:15px;font-weight:700;color:${tirTextColor};letter-spacing:-0.5px">${r.tir}<span style="font-size:9px;font-weight:400">%</span></div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">Avg</div><div style="font-size:15px;font-weight:700;color:${avgCls};letter-spacing:-0.5px">${r.avg}</div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">TDD</div><div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.5px">${r.tdd}<span style="font-size:9px;font-weight:400;color:var(--text3)">u</span></div></div>
       </div>
     </div>`;
   }).join('');
