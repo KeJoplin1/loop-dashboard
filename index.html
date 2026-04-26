@@ -99,7 +99,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .day-nav-label{font-size:12px;font-weight:600;color:var(--text);min-width:72px;text-align:center}
 
 /* ── GLUCOSE CHART WRAP — extra bottom space for bolus bars ─── */
-.gluc-chart-wrap{position:relative;width:100%;height:290px}
+.gluc-chart-wrap{position:relative;width:100%;height:330px}
 .bolus-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 
 /* ── UNIFIED TOOLTIP ─────────────────────────────────────────── */
@@ -590,12 +590,11 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
   const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
 
   // ── BOLUS ZONE — bottom of chart area ───────────────────────────
-  // We'll draw bars in the bottom padding of the SVG (below chartArea.bottom)
-  // The SVG itself is full height of .gluc-chart-wrap (290px)
+  // SVG is full height of .gluc-chart-wrap (330px).
   // chartArea.bottom is where the y-axis ends.
-  const svgH=overlay.clientHeight||290;
-  const BOLUS_ZONE_TOP=chartArea.bottom+8;   // start of bolus bar area
-  const BOLUS_ZONE_BOT=svgH-6;               // bottom of bolus bar area
+  const svgH=overlay.clientHeight||330;
+  const BOLUS_ZONE_TOP=chartArea.bottom+10;  // 10px gap below axis
+  const BOLUS_ZONE_BOT=svgH-22;              // leave 22px for x-axis date labels
   const BOLUS_ZONE_H=Math.max(BOLUS_ZONE_BOT-BOLUS_ZONE_TOP,40);
 
   // ── MEAL LABEL Y — sits on the glucose line ──────────────────────
@@ -606,9 +605,10 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
   const events=[];
 
   // ── Lookup: nearest glucose value at a given timestamp ──────────
+  // Search filteredCGM (full res) not just downsampled cgmSampled
   function glucAtTime(ts){
     let best=null,bestD=Infinity;
-    cgmSampled.forEach(d=>{
+    filteredCGM.forEach(d=>{
       const d2=Math.abs(d.t.getTime()-ts);
       if(d2<bestD){bestD=d2;best=d.v;}
     });
@@ -626,9 +626,9 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       const xPx=xOf(bT);
       const units=roundTenth(b.units);
 
-      // Bar height proportional to dose (min 10px, max BOLUS_ZONE_H)
-      const barH=Math.max(10,Math.round((units/maxU)*BOLUS_ZONE_H));
-      const barW=Math.max(6,Math.min(20,(chartArea.right-chartArea.left)*0.025));
+      // Bar height proportional to dose (min 8px, max BOLUS_ZONE_H)
+      const barH=Math.max(8,Math.round((units/maxU)*BOLUS_ZONE_H));
+      const barW=Math.min(7,(chartArea.right-chartArea.left)*0.015); // skinny: max 7px
       const barX=xPx-barW/2;
       const barY=BOLUS_ZONE_BOT-barH;
 
@@ -680,30 +680,36 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
 
   // ── MEAL MARKERS (on the glucose trace) ─────────────────────────
   if(showMeals){
+    // Use full filteredMeals — already filtered to time range
     filteredMeals.forEach(m=>{
       const mT=m.t.getTime();
       if(mT<minT||mT>maxT) return;
       const xPx=xOf(mT);
       const gluc=glucAtTime(mT);
-      const yG=gluc!=null?yOfGluc(gluc):chartArea.top+40;
+      const yG=gluc!=null?yOfGluc(Math.min(Math.max(gluc,40),260)):chartArea.top+40;
 
-      // Pill/tag background — sits above the glucose line
+      // Pill/tag — sits above the glucose line
       const labelText=m.carbs>0?m.carbs+'g':'meal';
-      const PILL_W=labelText.length<=3?28:labelText.length<=4?34:40;
+      // Measure text width estimate: ~6px per char + 10px padding
+      const PILL_W=Math.max(26, labelText.length*6+10);
       const PILL_H=16;
-      const PILL_Y=yG-PILL_H-10;  // 10px above glucose line
+      // Pin pill above line, clamp so it never goes above chartArea.top
+      const rawPillY=yG-PILL_H-10;
+      const PILL_Y=Math.max(chartArea.top+2, rawPillY);
       const PILL_X=xPx-PILL_W/2;
 
-      // Connector line from pill bottom to glucose line
-      const connector=document.createElementNS(svgNS,'line');
-      connector.setAttribute('x1',xPx);
-      connector.setAttribute('y1',PILL_Y+PILL_H);
-      connector.setAttribute('x2',xPx);
-      connector.setAttribute('y2',yG);
-      connector.setAttribute('stroke','rgba(0,212,160,0.5)');
-      connector.setAttribute('stroke-width','1');
-      connector.setAttribute('stroke-dasharray','2,2');
-      overlay.appendChild(connector);
+      // Connector line from pill bottom to glucose line (only if there's space)
+      if(PILL_Y+PILL_H < yG-1){
+        const connector=document.createElementNS(svgNS,'line');
+        connector.setAttribute('x1',xPx);
+        connector.setAttribute('y1',PILL_Y+PILL_H);
+        connector.setAttribute('x2',xPx);
+        connector.setAttribute('y2',yG);
+        connector.setAttribute('stroke','rgba(0,212,160,0.5)');
+        connector.setAttribute('stroke-width','1');
+        connector.setAttribute('stroke-dasharray','2,2');
+        overlay.appendChild(connector);
+      }
 
       // Dot on the glucose trace
       const dot=document.createElementNS(svgNS,'circle');
@@ -723,7 +729,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals){
       pill.setAttribute('height',PILL_H);
       pill.setAttribute('rx','5');
       pill.setAttribute('fill','rgba(0,212,160,0.18)');
-      pill.setAttribute('stroke','rgba(0,212,160,0.55)');
+      pill.setAttribute('stroke','rgba(0,212,160,0.6)');
       pill.setAttribute('stroke-width','1');
       overlay.appendChild(pill);
 
@@ -1077,7 +1083,9 @@ function renderDayOfWeek(cgm,boluses,basals){
   });
   boluses.forEach(b=>{const dow=b.t.getDay();if(dowData[dow]) dowData[dow].bolus+=b.units;});
   basals.forEach(b=>{const dow=b.t.getDay();if(dowData[dow]) dowData[dow].basal+=b.delivered;});
-  const rows=Object.entries(dowData).map(([dow,d])=>{
+
+  // Build stats for each day
+  const allStats=Object.entries(dowData).map(([dow,d])=>{
     const avg=Math.round(d.vals.reduce((a,b)=>a+b,0)/d.vals.length);
     const tir=Math.round(d.vals.filter(v=>v>=LOW&&v<=HIGH).length/d.vals.length*100);
     const low=Math.round(d.vals.filter(v=>v<LOW).length/d.vals.length*100);
@@ -1085,38 +1093,61 @@ function renderDayOfWeek(cgm,boluses,basals){
     const numDays=Math.max(1,d.days.size);
     const tdd=Math.round((d.bolus+d.basal)/numDays*10)/10;
     return{dow:parseInt(dow),name:DAYS_FULL[dow],short:DAYS_SHORT[dow],avg,tir,low,high,tdd,n:d.vals.length,numDays};
-  }).sort((a,b)=>b.tir-a.tir);
+  });
 
-  const rankColors=['#00d4a0','#00b88a','#606068','#ffb347','#ff4d6d','#e63a55','#c82a45'];
-  const tirBg=t=>t>=85?'rgba(0,212,160,0.1)':t>=70?'rgba(255,179,71,0.12)':'rgba(255,77,109,0.12)';
-  const tirBorder=t=>t>=85?'#00d4a0':t>=70?'#ffb347':'#ff4d6d';
+  // TIR rank (1=best) for badge color
+  const tirRanked=[...allStats].sort((a,b)=>b.tir-a.tir);
+  const tirRankMap={};
+  tirRanked.forEach((r,i)=>tirRankMap[r.dow]=i);
+  const rankColors=['#00d4a0','#00b88a','#5ec49a','#ffb347','#ff7a5a','#ff4d6d','#e63a55'];
 
-  const cards=rows.map((r,i)=>{
+  // Display order: Mon(1) Tue(2) Wed(3) Thu(4) Fri(5) Sat(6) Sun(0)
+  const MON_SUN_ORDER=[1,2,3,4,5,6,0];
+  const rows=MON_SUN_ORDER.map(dow=>allStats.find(r=>r.dow===dow)).filter(Boolean);
+
+  // Heat map: interpolate card background based on TIR
+  // 100% TIR → rich green tint, 0% → red tint, middle → neutral
+  function tirHeatBg(tir){
+    // green channel: tir/100, red channel: (100-tir)/100
+    const g=Math.round(tir/100*180);
+    const r=Math.round((100-tir)/100*160);
+    return`rgba(${r},${g},80,0.13)`;
+  }
+  function tirHeatBorder(tir){
+    const g=Math.round(tir/100*200);
+    const r=Math.round((100-tir)/100*200);
+    return`rgba(${r},${g},80,0.35)`;
+  }
+
+  const cards=rows.map((r)=>{
+    const rank=tirRankMap[r.dow];
+    const badgeColor=rankColors[Math.min(rank,rankColors.length-1)];
     const avgCls=r.avg<=110?'#00d4a0':r.avg<=130?'var(--text)':'#ffb347';
-    return`<div style="background:${tirBg(r.tir)};border:1px solid ${tirBorder(r.tir)};border-radius:var(--radius);padding:14px;position:relative">
+    const tirTextColor=r.tir>=85?'#00d4a0':r.tir>=70?'#ffb347':'#ff4d6d';
+    return`<div style="background:${tirHeatBg(r.tir)};border:1px solid ${tirHeatBorder(r.tir)};border-radius:var(--radius);padding:14px;position:relative">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="width:24px;height:24px;border-radius:50%;background:${rankColors[i]};color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</span>
+          <span style="width:22px;height:22px;border-radius:50%;background:${badgeColor};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${rank+1}</span>
           <span style="font-size:15px;font-weight:600">${r.name}</span>
         </div>
-        <span style="font-size:11px;color:var(--text3)">${r.numDays} ${r.numDays===1?'day':'days'}</span>
+        <span style="font-size:11px;color:var(--text3)">${r.numDays}d</span>
       </div>
-      <div style="display:flex;height:20px;border-radius:6px;overflow:hidden;margin-bottom:6px">
+      <div style="display:flex;height:18px;border-radius:6px;overflow:hidden;margin-bottom:8px">
         <div style="width:${r.low}%;background:#ff4d6d;min-width:${r.low>0?'3px':'0'}"></div>
-        <div style="width:${r.tir}%;background:#00d4a0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">${r.tir>=15?r.tir+'%':''}</div>
+        <div style="width:${r.tir}%;background:#00d4a0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(0,0,0,0.7)">${r.tir>=20?r.tir+'%':''}</div>
         <div style="width:${r.high}%;background:#ffb347;min-width:${r.high>0?'3px':'0'}"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:4px">
-        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">TIR</div><div style="font-size:20px;font-weight:700;color:${tirBorder(r.tir)}">${r.tir}<span style="font-size:11px;font-weight:400">%</span></div></div>
-        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Avg BG</div><div style="font-size:20px;font-weight:700;color:${avgCls}">${r.avg}</div></div>
-        <div style="text-align:center"><div style="font-size:10px;color:var(--text3);margin-bottom:2px">TDD</div><div style="font-size:20px;font-weight:700;color:var(--text)">${r.tdd}<span style="font-size:11px;font-weight:400;color:var(--text3)">u</span></div></div>
+      <div style="display:flex;justify-content:space-between">
+        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">TIR</div><div style="font-size:20px;font-weight:700;color:${tirTextColor};letter-spacing:-0.5px">${r.tir}<span style="font-size:10px;font-weight:400">%</span></div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">Avg BG</div><div style="font-size:20px;font-weight:700;color:${avgCls};letter-spacing:-0.5px">${r.avg}</div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">TDD</div><div style="font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px">${r.tdd}<span style="font-size:10px;font-weight:400;color:var(--text3)">u</span></div></div>
       </div>
     </div>`;
   }).join('');
 
   document.getElementById('dow-display').innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(${Math.min(rows.length,4)},1fr);gap:10px">${cards}</div>
-    <div style="font-size:11px;color:var(--text3);margin-top:10px">Ranked best → worst by TIR. Requires multiple weeks for meaningful patterns.</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">${cards}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px">Mon → Sun order · badge = TIR rank (1=best) · heat map intensity reflects TIR</div>
   `;
 }
 
