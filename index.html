@@ -99,7 +99,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .day-nav-label{font-size:12px;font-weight:600;color:var(--text);min-width:72px;text-align:center}
 
 /* ── GLUCOSE CHART WRAP ─────────────────────────────────────── */
-.gluc-chart-wrap{position:relative;width:100%;height:380px}
+.gluc-chart-wrap{position:relative;width:100%;height:240px}
 .bolus-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 
 /* ── UNIFIED TOOLTIP ─────────────────────────────────────────── */
@@ -190,13 +190,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
       </div>
       <div class="gluc-chart-wrap">
-        <!-- Glucose plot: top 260px -->
-        <div style="position:absolute;top:0;left:0;width:100%;height:260px">
-          <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
-        </div>
-        <!-- SVG overlay spans full wrap height (meals on top zone, bolus bars on bottom zone) -->
+        <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
+        <!-- SVG overlay — same size as canvas, meals/lines only -->
         <svg id="bolus-overlay" class="bolus-overlay" style="pointer-events:all"></svg>
       </div>
+      <!-- Bolus pill strip — sits directly below the glucose chart -->
+      <div id="bolus-strip" style="position:relative;width:100%;height:52px;margin-top:0"></div>
     </div>
     <div id="event-tooltip"></div>
 
@@ -580,6 +579,10 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
   if(!overlay||!chart) return;
   overlay.innerHTML='';
 
+  // Also clear/rebuild the bolus strip
+  const strip=document.getElementById('bolus-strip');
+  if(strip) strip.innerHTML='';
+
   const {chartArea}=chart;
   if(!chartArea) return;
 
@@ -592,11 +595,10 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
   const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
   const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
 
-  const SVG_H=overlay.clientHeight||380;
   const CHART_TOP=chartArea.top;
   const CHART_BOT=chartArea.bottom;
+  const CHART_W=chartArea.right-chartArea.left;
 
-  // Colors
   const BOLUS_COLOR='#4d9fff';
   const MEAL_COLOR='#ffb347';
 
@@ -606,80 +608,112 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
     return best;
   }
 
-  // Store events for x-proximity tooltip (no hit rect needed)
-  // Each event: {xPx, type, units?, carbs?, t}
   const eventList=[];
 
-  function makePill(xPx, topY, label, color, darkBg){
-    const PW=Math.max(28,label.length*6+14);
-    const PH=17;
-    const PX=xPx-PW/2;
-
-    const pill=document.createElementNS(svgNS,'rect');
-    pill.setAttribute('x',PX);pill.setAttribute('y',topY);
-    pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-    pill.setAttribute('rx','5');
-    pill.setAttribute('fill',darkBg);
-    pill.setAttribute('stroke',color);pill.setAttribute('stroke-width','1.5');
-    overlay.appendChild(pill);
-
-    const lt=document.createElementNS(svgNS,'text');
-    lt.setAttribute('x',xPx);lt.setAttribute('y',topY+PH-4);
-    lt.setAttribute('text-anchor','middle');lt.setAttribute('fill',color);
-    lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
-    lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-    lt.textContent=label;
-    overlay.appendChild(lt);
-  }
-
-  function makeDottedLine(xPx, color){
-    const ln=document.createElementNS(svgNS,'line');
-    ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);
-    ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
-    ln.setAttribute('stroke',color);
-    ln.setAttribute('stroke-width','1');
-    ln.setAttribute('stroke-dasharray','3,3');
-    ln.setAttribute('opacity','0.4');
-    overlay.appendChild(ln);
-  }
-
-  // ── BOLUS PILLS — top row of chart ───────────────────────────
-  if(showBolus && boluses && boluses.length){
+  // ── BOLUS PILLS in the strip below the chart ──────────────────
+  if(showBolus && boluses && boluses.length && strip){
     const vis=boluses.filter(b=>b.units>=0.5);
-    vis.forEach(b=>{
-      const bT=b.t.getTime();
-      if(bT<minT||bT>maxT) return;
-      const xPx=xOf(bT);
-      const units=roundTenth(b.units);
-      const label=units+'u';
+    if(vis.length){
+      // Create an SVG that matches the chart x-axis exactly
+      const stripSvg=document.createElementNS(svgNS,'svg');
+      stripSvg.setAttribute('width','100%');
+      stripSvg.setAttribute('height','52');
+      stripSvg.style.position='absolute';
+      stripSvg.style.top='0';
+      stripSvg.style.left='0';
+      stripSvg.style.pointerEvents='all';
 
-      makeDottedLine(xPx, BOLUS_COLOR);
-      // Pill sits near the top of chart area
-      makePill(xPx, CHART_TOP+4, label, BOLUS_COLOR, 'rgba(10,20,40,0.88)');
+      vis.forEach(b=>{
+        const bT=b.t.getTime();
+        if(bT<minT||bT>maxT) return;
+        const xPx=xOf(bT);
+        const units=roundTenth(b.units);
+        const label=units+'u';
+        const PW=Math.max(26,label.length*6+12);
+        const PH=17;
+        const PX=xPx-PW/2;
+        const PY=4;
 
-      eventList.push({xPx,type:'bolus',units,t:b.t});
-    });
+        // Pill bg
+        const pill=document.createElementNS(svgNS,'rect');
+        pill.setAttribute('x',PX);pill.setAttribute('y',PY);
+        pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+        pill.setAttribute('rx','5');
+        pill.setAttribute('fill','rgba(10,20,40,0.88)');
+        pill.setAttribute('stroke',BOLUS_COLOR);pill.setAttribute('stroke-width','1.5');
+        stripSvg.appendChild(pill);
+
+        // Pill text
+        const lt=document.createElementNS(svgNS,'text');
+        lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);
+        lt.setAttribute('text-anchor','middle');lt.setAttribute('fill',BOLUS_COLOR);
+        lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+        lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+        lt.textContent=label;
+        stripSvg.appendChild(lt);
+
+        eventList.push({xPx,type:'bolus',units,t:b.t});
+      });
+
+      strip.appendChild(stripSvg);
+
+      // Also draw dotted lines on the main glucose overlay
+      vis.forEach(b=>{
+        const bT=b.t.getTime();
+        if(bT<minT||bT>maxT) return;
+        const xPx=xOf(bT);
+        const ln=document.createElementNS(svgNS,'line');
+        ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);
+        ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
+        ln.setAttribute('stroke',BOLUS_COLOR);
+        ln.setAttribute('stroke-width','1');
+        ln.setAttribute('stroke-dasharray','3,3');
+        ln.setAttribute('opacity','0.3');
+        overlay.appendChild(ln);
+      });
+    }
   }
 
-  // ── MEAL PILLS — second row, below bolus ──────────────────────
+  // ── MEAL PILLS on the glucose trace (top of chart) ────────────
   if(showMeals && meals && meals.length){
     meals.forEach(m=>{
       const mT=m.t.getTime();
       if(mT<minT||mT>maxT) return;
       const xPx=xOf(mT);
       const label=m.carbs>0?m.carbs+'g':'meal';
+      const PW=Math.max(28,label.length*6+14);
+      const PH=17;
+      const PX=xPx-PW/2;
+      const PY=CHART_TOP+4;
 
-      makeDottedLine(xPx, MEAL_COLOR);
-      // Meal pill sits just below bolus row (offset so they don't overlap)
-      // Check if there's a bolus nearby — if so, drop the meal pill lower
-      const nearBolus=showBolus && boluses && boluses.some(b=>{
-        const bX=xOf(b.t.getTime());
-        return Math.abs(bX-xPx)<20;
-      });
-      const pillY=nearBolus ? CHART_TOP+26 : CHART_TOP+4;
-      makePill(xPx, pillY, label, MEAL_COLOR, 'rgba(40,25,5,0.88)');
+      // Dotted vertical line through glucose area
+      const ln=document.createElementNS(svgNS,'line');
+      ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);
+      ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
+      ln.setAttribute('stroke',MEAL_COLOR);
+      ln.setAttribute('stroke-width','1');
+      ln.setAttribute('stroke-dasharray','3,3');
+      ln.setAttribute('opacity','0.4');
+      overlay.appendChild(ln);
 
-      // Dot on trace
+      // Pill
+      const pill=document.createElementNS(svgNS,'rect');
+      pill.setAttribute('x',PX);pill.setAttribute('y',PY);
+      pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+      pill.setAttribute('rx','5');
+      pill.setAttribute('fill','rgba(40,25,5,0.9)');
+      pill.setAttribute('stroke',MEAL_COLOR);pill.setAttribute('stroke-width','1.5');
+      overlay.appendChild(pill);
+
+      const lt=document.createElementNS(svgNS,'text');
+      lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);
+      lt.setAttribute('text-anchor','middle');lt.setAttribute('fill',MEAL_COLOR);
+      lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+      lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+      lt.textContent=label;
+      overlay.appendChild(lt);
+
+      // Dot on glucose trace
       const gluc=glucAtTime(mT);
       const glucC=gluc!=null?Math.min(Math.max(gluc,40),225):null;
       if(glucC!=null){
@@ -695,11 +729,11 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
     });
   }
 
-  // ── Tooltip — x-proximity based, always shows gluc + any nearby events ──
+  // ── Tooltip — x-proximity, works over glucose + bolus strip ───
   const tooltip=document.getElementById('event-tooltip');
   if(!tooltip) return;
 
-  const SNAP_X=18; // px — how close cursor must be to an event x to show it
+  const SNAP_X=18;
 
   function getNearestGluc(xPx){
     const frac=(xPx-chartArea.left)/(chartArea.right-chartArea.left);
@@ -709,7 +743,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
     return best;
   }
 
-  function showTooltip(e,mx,my){
+  function showTooltip(e,mx){
     if(mx<chartArea.left||mx>chartArea.right){tooltip.style.display='none';return;}
     const nearest=getNearestGluc(mx);
     if(!nearest){tooltip.style.display='none';return;}
@@ -721,7 +755,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
     let html=`<div class="tt-time">${timeStr}</div>`;
     html+=`<div class="tt-gluc" style="color:${gc}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
 
-    // Show any events within SNAP_X pixels — regardless of y position
     eventList.forEach(ev=>{
       if(Math.abs(ev.xPx-mx)<=SNAP_X){
         if(ev.type==='bolus')
@@ -738,11 +771,18 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
     tooltip.style.left=tl+'px';tooltip.style.top=tt2+'px';tooltip.style.display='block';
   }
 
-  overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left,e.clientY-r.top);};
+  // Glucose overlay mouse
+  overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
   overlay.onmouseleave=()=>{tooltip.style.display='none';};
   const canvas=document.getElementById('glucChart');
-  canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left,e.clientY-r.top);};
+  canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
   canvas.onmouseleave=()=>{tooltip.style.display='none';};
+
+  // Bolus strip mouse — same x mapping
+  if(strip){
+    strip.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
+    strip.onmouseleave=()=>{tooltip.style.display='none';};
+  }
 }
 
 function renderTIR(cgm){
