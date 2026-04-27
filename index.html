@@ -595,6 +595,21 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   const svgNS='http://www.w3.org/2000/svg';
   const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
   const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
+
+  // Build lookup: timestamp ms → exact Chart.js pixel x for that CGM point
+  // This ensures dots, lines and pills all use Chart.js's own coordinate system
+  const meta0=chart.getDatasetMeta(0);
+  const cgmPxMap=new Map();
+  cgmSampled.forEach((d,i)=>{if(meta0.data[i]) cgmPxMap.set(d.t.getTime(), meta0.data[i].x);});
+  // xSnap: for a given timestamp, return the nearest CGM point's exact pixel x
+  function xSnap(ts){
+    let bestX=null,bestD=Infinity;
+    cgmSampled.forEach((d,i)=>{
+      const dd=Math.abs(d.t.getTime()-ts);
+      if(dd<bestD&&meta0.data[i]){bestD=dd;bestX=meta0.data[i].x;}
+    });
+    return bestX!=null?bestX:xOf(ts);
+  }
   const CHART_TOP=chartArea.top;
   const CHART_BOT=chartArea.bottom;
   const BOLUS_COLOR='#4d9fff';
@@ -651,7 +666,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       vis.forEach(b=>{
         const bT=b.t.getTime();
         if(bT<minT||bT>maxT) return;
-        const xPx=xOf(bT);
+        const xPx=xSnap(bT);
         const units=roundTenth(b.units);
         const label=units+'u';
         const PW=Math.max(26,label.length*6+12),PH=17,PY=4;
@@ -666,15 +681,18 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
         lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
         lt.textContent=label;svg.appendChild(lt);
         eventList.push({xPx,type:'bolus',units,t:b.t});
-        // Blue dot on overlay — same xOf(bT), perfectly aligned
-        const glucVal=glucAtTime(bT);
-        if(glucVal!=null){
-          const yG=yOfGluc(Math.min(Math.max(glucVal,40),225));
-          const bdot=document.createElementNS(svgNS,'circle');
-          bdot.setAttribute('cx',xPx);bdot.setAttribute('cy',yG);bdot.setAttribute('r','3');
-          bdot.setAttribute('fill',BOLUS_COLOR);bdot.setAttribute('stroke','rgba(0,0,0,0.3)');bdot.setAttribute('stroke-width','1');
-          overlay.appendChild(bdot);
-        }
+        // Blue dot — use Chart.js's own pixel coords for the nearest CGM point
+        {let bi=null,bd=Infinity;cgmSampled.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-bT);if(dd<bd){bd=dd;bi=i;}});
+        if(bi!==null&&bd<5*60000){
+          const meta=chart.getDatasetMeta(0);
+          const pt=meta.data[bi];
+          if(pt){
+            const bdot=document.createElementNS(svgNS,'circle');
+            bdot.setAttribute('cx',pt.x);bdot.setAttribute('cy',pt.y);bdot.setAttribute('r','3');
+            bdot.setAttribute('fill',BOLUS_COLOR);bdot.setAttribute('stroke','rgba(0,0,0,0.3)');bdot.setAttribute('stroke-width','1');
+            overlay.appendChild(bdot);
+          }
+        }}
         // Dotted line — same xOf(bT)
         const ln=document.createElementNS(svgNS,'line');
         ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
@@ -690,7 +708,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     meals.forEach(m=>{
       const mT=m.t.getTime();
       if(mT<minT||mT>maxT) return;
-      const xPx=xOf(mT);
+      const xPx=xSnap(mT);
       const label=m.carbs>0?m.carbs+'g':'meal';
       const PW=Math.max(28,label.length*6+14),PH=17,PY=CHART_TOP+4;
       const ln=document.createElementNS(svgNS,'line');
@@ -706,15 +724,18 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       lt.setAttribute('fill',MEAL_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
       lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
       lt.textContent=label;overlay.appendChild(lt);
-      // Pink dot on glucose trace — same xOf so perfectly aligned with dotted line
-      const mGluc=glucAtTime(mT);
-      if(mGluc!=null){
-        const myG=yOfGluc(Math.min(Math.max(mGluc,40),225));
-        const mdot=document.createElementNS(svgNS,'circle');
-        mdot.setAttribute('cx',xPx);mdot.setAttribute('cy',myG);mdot.setAttribute('r','3');
-        mdot.setAttribute('fill',MEAL_COLOR);mdot.setAttribute('stroke','rgba(0,0,0,0.35)');mdot.setAttribute('stroke-width','1');
-        overlay.appendChild(mdot);
-      }
+      // Pink dot — use Chart.js's own pixel coords for the nearest CGM point
+      {let mi=null,md=Infinity;cgmSampled.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-mT);if(dd<md){md=dd;mi=i;}});
+      if(mi!==null&&md<5*60000){
+        const meta=chart.getDatasetMeta(0);
+        const pt=meta.data[mi];
+        if(pt){
+          const mdot=document.createElementNS(svgNS,'circle');
+          mdot.setAttribute('cx',pt.x);mdot.setAttribute('cy',pt.y);mdot.setAttribute('r','3');
+          mdot.setAttribute('fill',MEAL_COLOR);mdot.setAttribute('stroke','rgba(0,0,0,0.3)');mdot.setAttribute('stroke-width','1');
+          overlay.appendChild(mdot);
+        }
+      }}
       eventList.push({xPx,type:'meal',carbs:m.carbs,t:m.t});
     });
   }
