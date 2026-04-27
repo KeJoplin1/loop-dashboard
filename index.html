@@ -188,6 +188,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-bolus" onchange="renderGlucoseChart(filteredCGM)" checked> Bolus markers</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
+        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked> Exercise</label>
       </div>
       <div class="gluc-chart-wrap">
         <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
@@ -362,7 +363,10 @@ function parseAndRender(csvText){
     if(!dup) allMeals.push(cb);
   });
   allMeals.sort((a,b)=>a.t-b.t);
-  console.log(`[Loop] Parsed: ${allCGM.length} CGM, ${allBoluses.length} boluses, ${allMeals.length} meals, ${allBasals.length} basals`);
+  allExercise=rows.filter(r=>r.type==='exercise'&&r.exercise_duration_min!=='')
+    .map(r=>({t:new Date(r.timestamp),name:r.exercise_name||'Exercise',dur:parseFloat(r.exercise_duration_min)||0}))
+    .filter(r=>r.dur>0).sort((a,b)=>a.t-b.t);
+  console.log(`[Loop] Parsed: ${allCGM.length} CGM, ${allBoluses.length} boluses, ${allMeals.length} meals, ${allBasals.length} basals, ${allExercise.length} exercise`);
   if(!allCGM.length){showError('No CGM data found.');document.getElementById('loading-state').style.display='none';return;}
   document.getElementById('status-dot').className='status-dot live';
   document.getElementById('status-text').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -445,6 +449,7 @@ function renderAll(){
   filteredBoluses=filterByDays(allBoluses,currentDays);
   filteredBasals=filterByDays(allBasals,currentDays);
   filteredMeals=filterByDays(allMeals,currentDays);
+  filteredExercise=filterByDays(allExercise,currentDays);
   if(!filteredCGM.length){showError('No data in selected range.');return;}
   document.getElementById('error-box').style.display='none';
   const minT=filteredCGM[0].t,maxT=filteredCGM[filteredCGM.length-1].t;
@@ -528,6 +533,7 @@ function renderGlucoseChart(cgm){
   const showDots=document.getElementById('show-dots')?.checked;
   const showBolus=document.getElementById('show-bolus')?.checked;
   const showMeals=document.getElementById('show-meals')?.checked;
+  const showExercise=document.getElementById('show-exercise')?.checked;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
   const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
@@ -541,6 +547,14 @@ function renderGlucoseChart(cgm){
       pointRadius:s.map(d=>d.v<LOW||d.v>HIGH?3:0),
       pointBackgroundColor:s.map(d=>d.v<LOW?'#ff4d6d':'#ffb347'),
       pointBorderColor:'transparent',fill:false,tension:0,datalabels:{display:false}});
+  }
+  if(showBolus&&filteredBoluses.length){
+    const bMap={};filteredBoluses.filter(b=>b.units>=0.5).forEach(b=>{let bi=null,bd=Infinity;s.forEach((d,i)=>{const dd=Math.abs(d.t-b.t);if(dd<bd){bd=dd;bi=i;}});if(bi!==null&&bd<5*60000)bMap[bi]=true;});
+    datasets.push({data:s.map(d=>d.v),borderColor:'transparent',pointRadius:s.map((_,i)=>bMap[i]?5:0),pointBackgroundColor:'#4d9fff',pointBorderColor:'rgba(0,0,0,0.3)',pointBorderWidth:1,fill:false,tension:0,datalabels:{display:false}});
+  }
+  if(showMeals&&filteredMeals.length){
+    const mMap={};filteredMeals.forEach(m=>{let mi=null,md=Infinity;s.forEach((d,i)=>{const dd=Math.abs(d.t-m.t);if(dd<md){md=dd;mi=i;}});if(mi!==null&&md<5*60000)mMap[mi]=true;});
+    datasets.push({data:s.map(d=>d.v),borderColor:'transparent',pointRadius:s.map((_,i)=>mMap[i]?5:0),pointBackgroundColor:'#c084fc',pointBorderColor:'rgba(0,0,0,0.3)',pointBorderWidth:1,fill:false,tension:0,datalabels:{display:false}});
   }
 
   const overlay=document.getElementById('bolus-overlay');
@@ -565,7 +579,7 @@ function renderGlucoseChart(cgm){
         y:{min:40,max:225,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
       },
       animation:{onComplete:()=>{
-        renderEventOverlay(glucChart,s,showBolus,showMeals,filteredMeals,filteredBoluses);
+        renderEventOverlay(glucChart,s,showBolus,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise);
       }}
     }
   });
@@ -574,211 +588,150 @@ function renderGlucoseChart(cgm){
 // ── Round to nearest 0.1 ────────────────────────────────────────────
 function roundTenth(v){return Math.round(v*10)/10;}
 
-function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,meals,boluses){
+function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,meals,boluses,exercise){
   const overlay=document.getElementById('bolus-overlay');
   if(!overlay||!chart) return;
   overlay.innerHTML='';
-
-  // Also clear/rebuild the bolus strip
   const strip=document.getElementById('bolus-strip');
   if(strip) strip.innerHTML='';
-
   const {chartArea}=chart;
   if(!chartArea) return;
-
   const minT=cgmSampled[0]?.t?.getTime();
   const maxT=cgmSampled[cgmSampled.length-1]?.t?.getTime();
   if(!minT||!maxT||maxT===minT) return;
   const tRange=maxT-minT;
-
   const svgNS='http://www.w3.org/2000/svg';
   const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
   const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
-
   const CHART_TOP=chartArea.top;
   const CHART_BOT=chartArea.bottom;
-  const CHART_W=chartArea.right-chartArea.left;
-
   const BOLUS_COLOR='#4d9fff';
-  const MEAL_COLOR='#ffb347';
-
-  function glucAtTime(ts){
-    let best=null,bestD=Infinity;
-    filteredCGM.forEach(d=>{const d2=Math.abs(d.t.getTime()-ts);if(d2<bestD){bestD=d2;best=d.v;}});
-    return best;
-  }
-
+  const MEAL_COLOR='#c084fc';
+  const EX_COLOR='#67e8f9';
   const eventList=[];
 
-  // ── BOLUS PILLS in the strip below the chart ──────────────────
-  if(showBolus && boluses && boluses.length && strip){
+  // ── EXERCISE BANDS ───────────────────────────────────────────
+  if(showExercise&&exercise&&exercise.length){
+    exercise.forEach(ex=>{
+      const sT=ex.t.getTime();
+      if(sT>maxT) return;
+      const eT=sT+ex.dur*60000;
+      const x1=Math.max(xOf(sT),chartArea.left);
+      const x2=Math.min(xOf(eT),chartArea.right);
+      if(x2<=x1) return;
+      const band=document.createElementNS(svgNS,'rect');
+      band.setAttribute('x',x1);band.setAttribute('y',CHART_TOP);
+      band.setAttribute('width',x2-x1);band.setAttribute('height',CHART_BOT-CHART_TOP);
+      band.setAttribute('fill','rgba(103,232,249,0.07)');overlay.appendChild(band);
+      const ln=document.createElementNS(svgNS,'line');
+      ln.setAttribute('x1',x1);ln.setAttribute('y1',CHART_TOP);
+      ln.setAttribute('x2',x1);ln.setAttribute('y2',CHART_BOT);
+      ln.setAttribute('stroke',EX_COLOR);ln.setAttribute('stroke-width','1.5');ln.setAttribute('opacity','0.5');
+      overlay.appendChild(ln);
+      const lbl=document.createElementNS(svgNS,'text');
+      lbl.setAttribute('x',x1+4);lbl.setAttribute('y',CHART_TOP+11);
+      lbl.setAttribute('fill',EX_COLOR);lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','700');lbl.setAttribute('opacity','0.8');
+      lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
+      lbl.textContent='🏃 '+Math.round(ex.dur)+'m';
+      overlay.appendChild(lbl);
+      eventList.push({xPx:x1,type:'exercise',name:ex.name,dur:ex.dur,t:ex.t});
+    });
+  }
+
+  // ── BOLUS PILLS (strip below chart) + dotted lines ───────────
+  if(showBolus&&boluses&&boluses.length&&strip){
     const vis=boluses.filter(b=>b.units>=0.5);
     if(vis.length){
-      // Create an SVG that matches the chart x-axis exactly
-      const stripSvg=document.createElementNS(svgNS,'svg');
-      stripSvg.setAttribute('width','100%');
-      stripSvg.setAttribute('height','52');
-      stripSvg.style.position='absolute';
-      stripSvg.style.top='0';
-      stripSvg.style.left='0';
-      stripSvg.style.pointerEvents='all';
-
+      const svg=document.createElementNS(svgNS,'svg');
+      svg.setAttribute('width','100%');svg.setAttribute('height','52');
+      svg.style.cssText='position:absolute;top:0;left:0;pointer-events:all';
       vis.forEach(b=>{
         const bT=b.t.getTime();
         if(bT<minT||bT>maxT) return;
         const xPx=xOf(bT);
         const units=roundTenth(b.units);
         const label=units+'u';
-        const PW=Math.max(26,label.length*6+12);
-        const PH=17;
-        const PX=xPx-PW/2;
-        const PY=4;
-
-        // Pill bg
+        const PW=Math.max(26,label.length*6+12),PH=17,PY=4;
         const pill=document.createElementNS(svgNS,'rect');
-        pill.setAttribute('x',PX);pill.setAttribute('y',PY);
-        pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-        pill.setAttribute('rx','5');
-        pill.setAttribute('fill','rgba(10,20,40,0.88)');
+        pill.setAttribute('x',xPx-PW/2);pill.setAttribute('y',PY);pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+        pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(10,20,40,0.88)');
         pill.setAttribute('stroke',BOLUS_COLOR);pill.setAttribute('stroke-width','1.5');
-        stripSvg.appendChild(pill);
-
-        // Pill text
+        svg.appendChild(pill);
         const lt=document.createElementNS(svgNS,'text');
-        lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);
-        lt.setAttribute('text-anchor','middle');lt.setAttribute('fill',BOLUS_COLOR);
-        lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+        lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
+        lt.setAttribute('fill',BOLUS_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
         lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-        lt.textContent=label;
-        stripSvg.appendChild(lt);
-
+        lt.textContent=label;svg.appendChild(lt);
         eventList.push({xPx,type:'bolus',units,t:b.t});
-      });
-
-      strip.appendChild(stripSvg);
-
-      // Also draw dotted lines on the main glucose overlay
-      vis.forEach(b=>{
-        const bT=b.t.getTime();
-        if(bT<minT||bT>maxT) return;
-        const xPx=xOf(bT);
         const ln=document.createElementNS(svgNS,'line');
-        ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);
-        ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
-        ln.setAttribute('stroke',BOLUS_COLOR);
-        ln.setAttribute('stroke-width','1');
-        ln.setAttribute('stroke-dasharray','3,3');
-        ln.setAttribute('opacity','0.3');
+        ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
+        ln.setAttribute('stroke',BOLUS_COLOR);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','3,3');ln.setAttribute('opacity','0.3');
         overlay.appendChild(ln);
       });
+      strip.appendChild(svg);
     }
   }
 
-  // ── MEAL PILLS on the glucose trace (top of chart) ────────────
-  if(showMeals && meals && meals.length){
+  // ── MEAL PILLS (top of glucose chart) — purple ───────────────
+  if(showMeals&&meals&&meals.length){
     meals.forEach(m=>{
       const mT=m.t.getTime();
       if(mT<minT||mT>maxT) return;
       const xPx=xOf(mT);
       const label=m.carbs>0?m.carbs+'g':'meal';
-      const PW=Math.max(28,label.length*6+14);
-      const PH=17;
-      const PX=xPx-PW/2;
-      const PY=CHART_TOP+4;
-
-      // Dotted vertical line through glucose area
+      const PW=Math.max(28,label.length*6+14),PH=17,PY=CHART_TOP+4;
       const ln=document.createElementNS(svgNS,'line');
-      ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);
-      ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
-      ln.setAttribute('stroke',MEAL_COLOR);
-      ln.setAttribute('stroke-width','1');
-      ln.setAttribute('stroke-dasharray','3,3');
-      ln.setAttribute('opacity','0.4');
+      ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
+      ln.setAttribute('stroke',MEAL_COLOR);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','3,3');ln.setAttribute('opacity','0.4');
       overlay.appendChild(ln);
-
-      // Pill
       const pill=document.createElementNS(svgNS,'rect');
-      pill.setAttribute('x',PX);pill.setAttribute('y',PY);
-      pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-      pill.setAttribute('rx','5');
-      pill.setAttribute('fill','rgba(40,25,5,0.9)');
-      pill.setAttribute('stroke',MEAL_COLOR);pill.setAttribute('stroke-width','1.5');
-      overlay.appendChild(pill);
-
+      pill.setAttribute('x',xPx-PW/2);pill.setAttribute('y',PY);pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(30,10,45,0.9)');
+      pill.setAttribute('stroke',MEAL_COLOR);pill.setAttribute('stroke-width','1.5');overlay.appendChild(pill);
       const lt=document.createElementNS(svgNS,'text');
-      lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);
-      lt.setAttribute('text-anchor','middle');lt.setAttribute('fill',MEAL_COLOR);
-      lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+      lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
+      lt.setAttribute('fill',MEAL_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
       lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-      lt.textContent=label;
-      overlay.appendChild(lt);
-
-      // Dot on glucose trace
-      const gluc=glucAtTime(mT);
-      const glucC=gluc!=null?Math.min(Math.max(gluc,40),225):null;
-      if(glucC!=null){
-        const yG=yOfGluc(glucC);
-        const dot=document.createElementNS(svgNS,'circle');
-        dot.setAttribute('cx',xPx);dot.setAttribute('cy',yG);dot.setAttribute('r','4');
-        dot.setAttribute('fill',MEAL_COLOR);dot.setAttribute('stroke','rgba(0,0,0,0.4)');
-        dot.setAttribute('stroke-width','1');
-        overlay.appendChild(dot);
-      }
-
+      lt.textContent=label;overlay.appendChild(lt);
       eventList.push({xPx,type:'meal',carbs:m.carbs,t:m.t});
     });
   }
 
-  // ── Tooltip — x-proximity, works over glucose + bolus strip ───
+  // ── Tooltip ───────────────────────────────────────────────────
   const tooltip=document.getElementById('event-tooltip');
   if(!tooltip) return;
-
   const SNAP_X=18;
-
   function getNearestGluc(xPx){
     const frac=(xPx-chartArea.left)/(chartArea.right-chartArea.left);
-    const ts=minT+frac*tRange;
-    let best=null,bestD=Infinity;
+    const ts=minT+frac*tRange;let best=null,bestD=Infinity;
     filteredCGM.forEach(d=>{const d2=Math.abs(d.t.getTime()-ts);if(d2<bestD){bestD=d2;best=d;}});
     return best;
   }
-
   function showTooltip(e,mx){
     if(mx<chartArea.left||mx>chartArea.right){tooltip.style.display='none';return;}
     const nearest=getNearestGluc(mx);
     if(!nearest){tooltip.style.display='none';return;}
-
-    const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+
-      ' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     const gc=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH?'#ffb347':'#00d4a0';
-
-    let html=`<div class="tt-time">${timeStr}</div>`;
-    html+=`<div class="tt-gluc" style="color:${gc}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
-
+    let html=`<div class="tt-time">${timeStr}</div><div class="tt-gluc" style="color:${gc}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
     eventList.forEach(ev=>{
       if(Math.abs(ev.xPx-mx)<=SNAP_X){
-        if(ev.type==='bolus')
-          html+=`<div class="tt-row"><span style="color:${BOLUS_COLOR}">💉 ${ev.units}u bolus</span></div>`;
-        else if(ev.type==='meal')
-          html+=`<div class="tt-row"><span style="color:${MEAL_COLOR}">🍽️ ${ev.carbs}g carbs</span></div>`;
+        if(ev.type==='bolus') html+=`<div class="tt-row"><span style="color:${BOLUS_COLOR}">💉 ${ev.units}u bolus</span></div>`;
+        else if(ev.type==='meal') html+=`<div class="tt-row"><span style="color:${MEAL_COLOR}">🍽️ ${ev.carbs}g carbs</span></div>`;
+        else if(ev.type==='exercise') html+=`<div class="tt-row"><span style="color:${EX_COLOR}">🏃 ${ev.name} ${Math.round(ev.dur)}min</span></div>`;
       }
     });
-
     tooltip.innerHTML=html;
     const tw=tooltip.offsetWidth||140,th=tooltip.offsetHeight||60;
     let tl=e.clientX-tw/2,tt2=e.clientY-th-16;
     tl=Math.max(8,Math.min(tl,window.innerWidth-tw-8));tt2=Math.max(8,tt2);
     tooltip.style.left=tl+'px';tooltip.style.top=tt2+'px';tooltip.style.display='block';
   }
-
-  // Glucose overlay mouse
   overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
   overlay.onmouseleave=()=>{tooltip.style.display='none';};
   const canvas=document.getElementById('glucChart');
   canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
   canvas.onmouseleave=()=>{tooltip.style.display='none';};
-
-  // Bolus strip mouse — same x mapping
   if(strip){
     strip.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
     strip.onmouseleave=()=>{tooltip.style.display='none';};
