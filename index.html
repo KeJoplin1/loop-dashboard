@@ -548,14 +548,6 @@ function renderGlucoseChart(cgm){
       pointBackgroundColor:s.map(d=>d.v<LOW?'#ff4d6d':'#ffb347'),
       pointBorderColor:'transparent',fill:false,tension:0,datalabels:{display:false}});
   }
-  if(showBolus&&filteredBoluses.length){
-    const bMap={};filteredBoluses.filter(b=>b.units>=0.5).forEach(b=>{let bi=null,bd=Infinity;s.forEach((d,i)=>{const dd=Math.abs(d.t-b.t);if(dd<bd){bd=dd;bi=i;}});if(bi!==null&&bd<5*60000)bMap[bi]=true;});
-    datasets.push({data:s.map(d=>d.v),borderColor:'transparent',pointRadius:s.map((_,i)=>bMap[i]?5:0),pointBackgroundColor:'#4d9fff',pointBorderColor:'rgba(0,0,0,0.3)',pointBorderWidth:1,fill:false,tension:0,datalabels:{display:false}});
-  }
-  if(showMeals&&filteredMeals.length){
-    const mMap={};filteredMeals.forEach(m=>{let mi=null,md=Infinity;s.forEach((d,i)=>{const dd=Math.abs(d.t-m.t);if(dd<md){md=dd;mi=i;}});if(mi!==null&&md<5*60000)mMap[mi]=true;});
-    datasets.push({data:s.map(d=>d.v),borderColor:'transparent',pointRadius:s.map((_,i)=>mMap[i]?5:0),pointBackgroundColor:'#c084fc',pointBorderColor:'rgba(0,0,0,0.3)',pointBorderWidth:1,fill:false,tension:0,datalabels:{display:false}});
-  }
 
   const overlay=document.getElementById('bolus-overlay');
   if(overlay) overlay.innerHTML='';
@@ -606,9 +598,15 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   const CHART_TOP=chartArea.top;
   const CHART_BOT=chartArea.bottom;
   const BOLUS_COLOR='#4d9fff';
-  const MEAL_COLOR='#c084fc';
+  const MEAL_COLOR='#f472b6';   // pink
   const EX_COLOR='#67e8f9';
   const eventList=[];
+
+  function glucAtTime(ts){
+    let best=null,bestD=Infinity;
+    filteredCGM.forEach(d=>{const d2=Math.abs(d.t.getTime()-ts);if(d2<bestD){bestD=d2;best=d.v;}});
+    return best;
+  }
 
   // ── EXERCISE BANDS ───────────────────────────────────────────
   if(showExercise&&exercise&&exercise.length){
@@ -663,6 +661,16 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
         lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
         lt.textContent=label;svg.appendChild(lt);
         eventList.push({xPx,type:'bolus',units,t:b.t});
+        // Blue dot on glucose trace — uses same xOf(bT) so perfectly aligned with line and pill
+        const glucVal=glucAtTime(bT);
+        if(glucVal!=null){
+          const yG=yOfGluc(Math.min(Math.max(glucVal,40),225));
+          const bdot=document.createElementNS(svgNS,'circle');
+          bdot.setAttribute('cx',xPx);bdot.setAttribute('cy',yG);bdot.setAttribute('r','5');
+          bdot.setAttribute('fill',BOLUS_COLOR);bdot.setAttribute('stroke','rgba(0,0,0,0.35)');bdot.setAttribute('stroke-width','1');
+          overlay.appendChild(bdot);
+        }
+        // Dotted line through glucose area — same xOf(bT) as dot, guaranteed aligned
         const ln=document.createElementNS(svgNS,'line');
         ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
         ln.setAttribute('stroke',BOLUS_COLOR);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','3,3');ln.setAttribute('opacity','0.3');
@@ -693,6 +701,15 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       lt.setAttribute('fill',MEAL_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
       lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
       lt.textContent=label;overlay.appendChild(lt);
+      // Pink dot on glucose trace — same xOf so perfectly aligned with dotted line
+      const mGluc=glucAtTime(mT);
+      if(mGluc!=null){
+        const myG=yOfGluc(Math.min(Math.max(mGluc,40),225));
+        const mdot=document.createElementNS(svgNS,'circle');
+        mdot.setAttribute('cx',xPx);mdot.setAttribute('cy',myG);mdot.setAttribute('r','5');
+        mdot.setAttribute('fill',MEAL_COLOR);mdot.setAttribute('stroke','rgba(0,0,0,0.35)');mdot.setAttribute('stroke-width','1');
+        overlay.appendChild(mdot);
+      }
       eventList.push({xPx,type:'meal',carbs:m.carbs,t:m.t});
     });
   }
