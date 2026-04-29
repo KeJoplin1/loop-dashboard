@@ -203,10 +203,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="two-col">
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div class="card-title" id="tir-card-title" style="margin-bottom:0">Time in range (70–150 mg/dL)</div>
+          <div class="card-title" id="tir-card-title" style="margin-bottom:0">Time in range (70–180 mg/dL)</div>
           <div style="display:flex;background:var(--surface2);border-radius:20px;padding:3px;gap:2px">
             <button id="tir-toggle-std" onclick="setTIRMode('standard',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:var(--accent);color:#000">Standard</button>
-            <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:none;color:var(--text3)">Tight (70–140)</button>
+            <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:none;color:var(--text3)">TITR (70–140)</button>
           </div>
         </div>
         <div id="tir-display"></div>
@@ -227,7 +227,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         </div>
       </div>
       <div class="card">
-        <div class="card-title">High events by 3-hour block (&gt;150)</div>
+        <div id="high-block-title" class="card-title">High events by 3-hour block (&gt;180)</div>
         <div style="position:relative;width:100%;height:180px">
           <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
         </div>
@@ -236,8 +236,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="two-col">
       <div class="card">
-        <div class="card-title">Overnight vs daytime TIR</div>
-        <div id="overnight-display"></div>
+        <div class="card-title">Overnight vs daytime glucose</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Avg glucose by hour of day · 🌙 overnight (10pm–6am) vs ☀️ daytime</div>
+        <div style="position:relative;width:100%;height:200px"><canvas id="overnightChart" role="img" aria-label="Overnight vs daytime"></canvas></div>
+        <div id="overnight-stats" style="margin-top:10px"></div>
       </div>
       <div class="card">
         <div class="card-title">Post-meal glucose response</div>
@@ -246,23 +248,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <canvas id="postmealCurveChart" role="img" aria-label="Post-meal response curve"></canvas>
         </div>
         <div id="postmeal-stats" style="margin-top:10px"></div>
-      </div>
-    </div>
-
-    <div class="two-col">
-      <div class="card">
-        <div class="card-title">Glucose distribution</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Reading frequency by mg/dL bucket · shape reveals patterns</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="histogramChart" role="img" aria-label="Glucose histogram"></canvas>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Rate of change</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">% of readings by glucose velocity (mg/dL/min)</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="rocChart" role="img" aria-label="Rate of change distribution"></canvas>
-        </div>
       </div>
     </div>
 
@@ -309,10 +294,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <script>
 Chart.register(ChartDataLabels);
 const ONEDRIVE_URL="https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL3gvYy9hYThiZTRkZjIxZTk5YTk1L0lRQ0dxcGszdTREQ1RiRnljem1rYVdmYUFTTHk5d3lnQ0pEa295eEI0R3VNcFE/root/content";
-const LOW=70,HIGH=150,WEIGHT_KG=81.6;
+const LOW=70,HIGH=180,WEIGHT_KG=81.6;
 const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-let tirMode='standard'; // 'standard' (70-150) or 'tight' (70-140)
+let tirMode='standard'; // 'standard'=TIR 70-180, 'tight'=TITR 70-140
 let allCGM=[],allBoluses=[],allBasals=[],allMeals=[],allExercise=[];
 let filteredCGM=[],filteredBoluses=[],filteredBasals=[],filteredMeals=[],filteredExercise=[];
 let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null,hourlyHighChart=null;
@@ -398,10 +383,29 @@ function parseAndRender(csvText){
   if(!allCGM.length){showError('No CGM data found.');document.getElementById('loading-state').style.display='none';return;}
   document.getElementById('status-dot').className='status-dot live';
   document.getElementById('status-text').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  const today=new Date();
-  const weekAgo=new Date(Date.now()-7*86400000);
-  document.getElementById('date-to').value=today.toISOString().split('T')[0];
-  document.getElementById('date-from').value=weekAgo.toISOString().split('T')[0];
+  // Default to first day with ≥24h of complete data
+  const firstT=allCGM[0]?.t;
+  const lastT=allCGM[allCGM.length-1]?.t;
+  let defaultFrom=firstT?new Date(firstT):new Date();
+  defaultFrom.setHours(0,0,0,0);
+  let defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
+  // Make sure that day has reasonable data (at least 200 readings ~16h+)
+  const firstDayCount=allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length;
+  if(firstDayCount<200&&allCGM.length>0){
+    // step forward until we find a day with enough data
+    for(let i=0;i<7;i++){
+      defaultFrom=new Date(defaultFrom.getTime()+86400000);
+      defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
+      if(allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length>=200) break;
+    }
+  }
+  customFrom=new Date(defaultFrom);customTo=new Date(defaultTo);
+  dayNavDate=new Date(defaultFrom);
+  document.getElementById('date-from').value=defaultFrom.toISOString().split('T')[0];
+  document.getElementById('date-to').value=defaultTo.toISOString().split('T')[0];
+  document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
+  currentDays=1;
+  updateDayNavLabel();
   document.getElementById('loading-state').style.display='none';
   document.getElementById('dashboard').style.display='block';
   renderAll();
@@ -469,7 +473,7 @@ function applyCustomRange(){
 function setTIRMode(mode,btn){
   tirMode=mode;
   const HIGH_TIR=tirMode==='tight'?140:150;
-  const title=tirMode==='tight'?'Time in tight range (70–140 mg/dL)':'Time in range (70–150 mg/dL)';
+  const title=tirMode==='tight'?'Time in tight range (TITR 70–140 mg/dL)':'Time in range (TIR 70–180 mg/dL)';
   document.getElementById('tir-card-title').textContent=title;
   document.querySelectorAll('#tir-toggle-std,#tir-toggle-tight').forEach(b=>{
     b.style.background='none';b.style.color='var(--text3)';
@@ -505,8 +509,6 @@ function renderAll(){
   renderHourlyHighs(filteredCGM);
   renderOvernightVsDaytime(filteredCGM);
   renderPostMealCurve(filteredCGM,filteredMeals);
-  renderHistogram(filteredCGM);
-  renderRateOfChange(filteredCGM);
   renderDayOfWeek(filteredCGM,filteredBoluses,filteredBasals);
   renderSensitivityChart(filteredBoluses,filteredBasals);
   renderInsights(filteredCGM,filteredBoluses,filteredBasals);
@@ -576,9 +578,9 @@ function renderGlucoseChart(cgm){
   const grid='rgba(255,255,255,0.05)';
   const showBand=document.getElementById('show-band')?.checked;
   const showDots=document.getElementById('show-dots')?.checked;
-  const showBolus=document.getElementById('show-bolus')?.checked;
-  const showMeals=document.getElementById('show-meals')?.checked;
-  const showExercise=document.getElementById('show-exercise')?.checked;
+  const showBolus=document.getElementById('show-bolus')?.checked&&currentDays<=7;
+  const showMeals=document.getElementById('show-meals')?.checked&&currentDays<=7;
+  const showExercise=document.getElementById('show-exercise')?.checked&&currentDays<=7;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
   const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
@@ -991,34 +993,72 @@ function tirBar(tir,low,high,n){
 }
 
 function renderOvernightVsDaytime(cgm){
-  const overnight=cgm.filter(d=>{const h=d.t.getHours();return h>=22||h<6;});
-  const daytime=cgm.filter(d=>{const h=d.t.getHours();return h>=6&&h<22;});
-  function stats(arr){
+  if(window.overnightChart instanceof Chart) window.overnightChart.destroy();
+  const canvas=document.getElementById('overnightChart');
+  const statsEl=document.getElementById('overnight-stats');
+  if(!canvas||!cgm.length) return;
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
+
+  // Build avg glucose by hour of day, split overnight vs daytime
+  const hourly=Array.from({length:24},()=>({overnight:[],daytime:[]}));
+  cgm.forEach(d=>{
+    const h=d.t.getHours();
+    const isOvernight=h>=22||h<6;
+    if(isOvernight) hourly[h].overnight.push(d.v);
+    else hourly[h].daytime.push(d.v);
+  });
+  const labels=['12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p','11p'];
+  const overnightAvg=hourly.map(h=>h.overnight.length?Math.round(h.overnight.reduce((a,b)=>a+b,0)/h.overnight.length):null);
+  const daytimeAvg=hourly.map(h=>h.daytime.length?Math.round(h.daytime.reduce((a,b)=>a+b,0)/h.daytime.length):null);
+
+  const grid='rgba(255,255,255,0.05)';
+  window.overnightChart=new Chart(canvas,{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'Overnight',data:overnightAvg,borderColor:'#818cf8',borderWidth:2,pointRadius:3,pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
+      {label:'Daytime',data:daytimeAvg,borderColor:'#fbbf24',borderWidth:2,pointRadius:3,pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
+      {label:'Upper',data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
+      {label:'Lower',data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,position:'top',labels:{color:'var(--text2)',font:{size:11},usePointStyle:true,filter:item=>item.text==='Overnight'||item.text==='Daytime'}},
+        datalabels:{display:false},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label===('Overnight')||ctx.dataset.label===('Daytime')?ctx.dataset.label+': '+ctx.parsed.y+' mg/dL':''}}
+      },
+      scales:{
+        x:{ticks:{color:'#505058',font:{size:9},maxRotation:0},grid:{color:grid}},
+        y:{min:50,max:220,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
+      }}
+  });
+
+  // Stats summary
+  const onVals=cgm.filter(d=>{const h=d.t.getHours();return h>=22||h<6;}).map(d=>d.v);
+  const dayVals=cgm.filter(d=>{const h=d.t.getHours();return h>=6&&h<22;}).map(d=>d.v);
+  function s(arr){
     if(!arr.length) return null;
-    const vals=arr.map(d=>d.v);
-    const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-    const HIGH_TIR=tirMode==='tight'?140:HIGH;
-  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/vals.length*100);
-    const low=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
-    const high=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
-    return{avg,tir,low,high,n:vals.length};
+    const avg=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+    const tir=Math.round(arr.filter(v=>v>=LOW&&v<=HIGH_TIR).length/arr.length*100);
+    const low=Math.round(arr.filter(v=>v<LOW).length/arr.length*100);
+    return{avg,tir,low};
   }
-  const on=stats(overnight),da=stats(daytime);
-  function row(label,s,icon){
-    if(!s) return'';
-    const tirCls=s.tir>=85?'#00d4a0':s.tir>=70?'#ffb347':'#ff4d6d';
-    const avgCls=s.avg<=110?'#00d4a0':s.avg<=130?'var(--text)':'#ffb347';
-    return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
-      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:10px">${icon} ${label}</div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap">
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Avg BG</div><div style="font-size:22px;font-weight:700;color:${avgCls}">${s.avg}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">TIR</div><div style="font-size:22px;font-weight:700;color:${tirCls}">${s.tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Low</div><div style="font-size:22px;font-weight:700;color:#ff4d6d">${s.low}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">High</div><div style="font-size:22px;font-weight:700;color:#ffb347">${s.high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
+  const on=s(onVals),da=s(dayVals);
+  if(on&&da&&statsEl){
+    const onTirCls=on.tir>=70?'#818cf8':'#ff4d6d';
+    const daTirCls=da.tir>=70?'#fbbf24':'#ff4d6d';
+    statsEl.innerHTML=`<div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px">
+      <div style="display:flex;align-items:center;gap:6px"><span style="color:#818cf8;font-weight:700">🌙 Overnight</span>
+        <span style="color:var(--text3)">Avg</span><strong>${on.avg}</strong>
+        <span style="color:var(--text3)">TIR</span><strong style="color:${onTirCls}">${on.tir}%</strong>
+        <span style="color:var(--text3)">Low</span><strong style="color:#ff4d6d">${on.low}%</strong>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px"><span style="color:#fbbf24;font-weight:700">☀️ Daytime</span>
+        <span style="color:var(--text3)">Avg</span><strong>${da.avg}</strong>
+        <span style="color:var(--text3)">TIR</span><strong style="color:${daTirCls}">${da.tir}%</strong>
+        <span style="color:var(--text3)">Low</span><strong style="color:#ff4d6d">${da.low}%</strong>
       </div>
     </div>`;
   }
-  document.getElementById('overnight-display').innerHTML=row('Overnight (10pm–6am)',on,'🌙')+row('Daytime (6am–10pm)',da,'☀️');
 }
 
 
@@ -1289,75 +1329,8 @@ function renderPostMealCurve(cgm,meals){
 }
 
 // ── GLUCOSE HISTOGRAM ──────────────────────────────────────────────────────
-let histogramChart=null;
-function renderHistogram(cgm){
-  if(histogramChart) histogramChart.destroy();
-  const canvas=document.getElementById('histogramChart');
-  if(!canvas||!cgm.length) return;
-  const HIGH_TIR=tirMode==='tight'?140:HIGH;
-  // 10 mg/dL buckets from 40 to 400
-  const MIN=40,MAX=310,BUCKET=10;
-  const buckets=[];
-  for(let v=MIN;v<MAX;v+=BUCKET){
-    const count=cgm.filter(d=>d.v>=v&&d.v<v+BUCKET).length;
-    const pct=Math.round(count/cgm.length*100);
-    const midpoint=v+BUCKET/2;
-    const color=midpoint<LOW?'rgba(255,77,109,0.75)':midpoint>HIGH_TIR?'rgba(255,179,71,0.75)':'rgba(0,212,160,0.75)';
-    buckets.push({label:`${v}`,count,pct,color});
-  }
-  const grid='rgba(255,255,255,0.05)';
-  histogramChart=new Chart(canvas,{
-    type:'bar',
-    data:{labels:buckets.map(b=>b.label),datasets:[{data:buckets.map(b=>b.pct),backgroundColor:buckets.map(b=>b.color),borderRadius:2,borderSkipped:false}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},datalabels:{display:false},
-        tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y}% of readings`}}},
-      scales:{
-        x:{ticks:{color:'#505058',font:{size:9},maxTicksLimit:15},grid:{display:false},title:{display:true,text:'mg/dL',color:'#505058',font:{size:9}}},
-        y:{ticks:{color:'#505058',font:{size:9},callback:v=>v+'%'},grid:{color:grid}}
-      }}
-  });
-}
 
 // ── RATE OF CHANGE ─────────────────────────────────────────────────────────
-let rocChart=null;
-function renderRateOfChange(cgm){
-  if(rocChart) rocChart.destroy();
-  const canvas=document.getElementById('rocChart');
-  if(!canvas||cgm.length<2) return;
-  // Calculate 5-min rate of change for consecutive readings
-  const rocs=[];
-  for(let i=1;i<cgm.length;i++){
-    const dt=(cgm[i].t-cgm[i-1].t)/60000; // minutes
-    if(dt>0&&dt<=10){ // only use readings within 10 min of each other
-      rocs.push((cgm[i].v-cgm[i-1].v)/dt);
-    }
-  }
-  if(!rocs.length) return;
-  // Bucket into rate categories (mg/dL/min)
-  const cats=[
-    {label:'↓↓ <-2',min:-99,max:-2,color:'rgba(230,58,85,0.8)'},
-    {label:'↓ -2 to -1',min:-2,max:-1,color:'rgba(255,77,109,0.7)'},
-    {label:'↘ -1 to -0.5',min:-1,max:-0.5,color:'rgba(255,179,71,0.6)'},
-    {label:'→ stable',min:-0.5,max:0.5,color:'rgba(0,212,160,0.75)'},
-    {label:'↗ 0.5 to 1',min:0.5,max:1,color:'rgba(255,179,71,0.6)'},
-    {label:'↑ 1 to 2',min:1,max:2,color:'rgba(255,77,109,0.7)'},
-    {label:'↑↑ >2',min:2,max:99,color:'rgba(230,58,85,0.8)'},
-  ];
-  const data=cats.map(c=>Math.round(rocs.filter(r=>r>=c.min&&r<c.max).length/rocs.length*100));
-  const grid='rgba(255,255,255,0.05)';
-  rocChart=new Chart(canvas,{
-    type:'bar',
-    data:{labels:cats.map(c=>c.label),datasets:[{data,backgroundColor:cats.map(c=>c.color),borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},datalabels:{display:false},
-        tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y}% of readings`}}},
-      scales:{
-        x:{ticks:{color:'#505058',font:{size:9}},grid:{display:false}},
-        y:{ticks:{color:'#505058',font:{size:9},callback:v=>v+'%'},grid:{color:grid}}
-      }}
-  });
-}
 
 function toggleInsights(){
   const body=document.getElementById('insights-body');
