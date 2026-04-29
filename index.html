@@ -383,26 +383,22 @@ function parseAndRender(csvText){
   if(!allCGM.length){showError('No CGM data found.');document.getElementById('loading-state').style.display='none';return;}
   document.getElementById('status-dot').className='status-dot live';
   document.getElementById('status-text').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  // Default to first day with ≥24h of complete data
-  const firstT=allCGM[0]?.t;
+  // Default to MOST RECENT complete day (search backward from last CGM reading)
   const lastT=allCGM[allCGM.length-1]?.t;
-  let defaultFrom=firstT?new Date(firstT):new Date();
+  let defaultFrom=lastT?new Date(lastT):new Date();
   defaultFrom.setHours(0,0,0,0);
   let defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
-  // Make sure that day has reasonable data (at least 200 readings ~16h+)
-  const firstDayCount=allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length;
-  if(firstDayCount<200&&allCGM.length>0){
-    // step forward until we find a day with enough data
-    for(let i=0;i<7;i++){
-      defaultFrom=new Date(defaultFrom.getTime()+86400000);
-      defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
-      if(allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length>=200) break;
-    }
+  // Step backward until we find a day with ≥200 readings (~16h+ of data)
+  for(let i=0;i<30;i++){
+    if(allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length>=200) break;
+    defaultFrom=new Date(defaultFrom.getTime()-86400000);
+    defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
   }
   customFrom=new Date(defaultFrom);customTo=new Date(defaultTo);
   dayNavDate=new Date(defaultFrom);
-  document.getElementById('date-from').value=defaultFrom.toISOString().split('T')[0];
-  document.getElementById('date-to').value=defaultTo.toISOString().split('T')[0];
+  // Leave custom date inputs blank on load
+  document.getElementById('date-from').value='';
+  document.getElementById('date-to').value='';
   document.querySelectorAll('.range-tab').forEach(t=>t.classList.remove('active'));
   currentDays=1;
   updateDayNavLabel();
@@ -475,6 +471,8 @@ function setTIRMode(mode,btn){
   const HIGH_TIR=tirMode==='tight'?140:150;
   const title=tirMode==='tight'?'Time in tight range (TITR 70–140 mg/dL)':'Time in range (TIR 70–180 mg/dL)';
   document.getElementById('tir-card-title').textContent=title;
+  const highTitle=document.getElementById('high-block-title');
+  if(highTitle) highTitle.textContent=tirMode==='tight'?'High events by 3-hour block (>140)':'High events by 3-hour block (>180)';
   document.querySelectorAll('#tir-toggle-std,#tir-toggle-tight').forEach(b=>{
     b.style.background='none';b.style.color='var(--text3)';
   });
@@ -583,15 +581,16 @@ function renderGlucoseChart(cgm){
   const showExercise=document.getElementById('show-exercise')?.checked&&currentDays<=7;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
   const s=cgm.filter((_,i)=>i%step===0);
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
   const datasets=[{data:s.map(d=>d.v),borderWidth:1.5,pointRadius:0,pointHoverRadius:5,tension:0.2,fill:false,
-    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#ff4d6d':v>HIGH?'#ffb347':'#00d4a0';}}}];
+    segment:{borderColor:ctx=>{const v=s[ctx.p1DataIndex]?.v;return v<LOW?'#ff4d6d':v>HIGH_TIR?'#ffb347':'#00d4a0';}}}];
   if(showBand){
-    datasets.push({data:s.map(()=>HIGH),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false,datalabels:{display:false}});
+    datasets.push({data:s.map(()=>HIGH_TIR),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false,datalabels:{display:false}});
     datasets.push({data:s.map(()=>LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false,datalabels:{display:false}});
   }
   if(showDots){
-    datasets.push({data:s.map(d=>d.v<LOW||d.v>HIGH?d.v:null),borderColor:'transparent',
-      pointRadius:s.map(d=>d.v<LOW||d.v>HIGH?3:0),
+    datasets.push({data:s.map(d=>d.v<LOW||d.v>HIGH_TIR?d.v:null),borderColor:'transparent',
+      pointRadius:s.map(d=>d.v<LOW||d.v>HIGH_TIR?3:0),
       pointBackgroundColor:s.map(d=>d.v<LOW?'#ff4d6d':'#ffb347'),
       pointBorderColor:'transparent',fill:false,tension:0,datalabels:{display:false}});
   }
@@ -952,8 +951,9 @@ function renderHourlyLows(cgm){
 
 function renderHourlyHighs(cgm){
   if(hourlyHighChart) hourlyHighChart.destroy();
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
   const blocks=Array.from({length:8},()=>0);
-  cgm.forEach(d=>{if(d.v>HIGH) blocks[Math.floor(d.t.getHours()/3)]++;});
+  cgm.forEach(d=>{if(d.v>HIGH_TIR) blocks[Math.floor(d.t.getHours()/3)]++;});
   const maxVal=Math.max(...blocks,1);
   const colors=blocks.map(v=>{
     const intensity=v/maxVal;
@@ -968,7 +968,7 @@ function renderHourlyHighs(cgm){
   hourlyHighChart=new Chart(document.getElementById('hourlyHighChart'),{
     type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings >150 in block'}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+(tirMode==='tight'?' readings >140 in block':' readings >180 in block')}},
         datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
       scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:10},precision:0},grid:{color:grid}}},
       layout:{padding:{top:24}}}
