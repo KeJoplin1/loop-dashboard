@@ -202,7 +202,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="two-col">
       <div class="card">
-        <div class="card-title">Time in range (70–150 mg/dL)</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" id="tir-card-title" style="margin-bottom:0">Time in range (70–150 mg/dL)</div>
+          <div style="display:flex;background:var(--surface2);border-radius:20px;padding:3px;gap:2px">
+            <button id="tir-toggle-std" onclick="setTIRMode('standard',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:var(--accent);color:#000">Standard</button>
+            <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:none;color:var(--text3)">Tight (70–140)</button>
+          </div>
+        </div>
         <div id="tir-display"></div>
       </div>
       <div class="card">
@@ -234,8 +240,29 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="overnight-display"></div>
       </div>
       <div class="card">
-        <div class="card-title">Post-meal glucose pattern</div>
-        <div id="postmeal-display"></div>
+        <div class="card-title">Post-meal glucose response</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Avg glucose curve 2h before → 3h after each logged meal · requires meal data</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="postmealCurveChart" role="img" aria-label="Post-meal response curve"></canvas>
+        </div>
+        <div id="postmeal-stats" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Glucose distribution</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Reading frequency by mg/dL bucket · shape reveals patterns</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="histogramChart" role="img" aria-label="Glucose histogram"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Rate of change</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">% of readings by glucose velocity (mg/dL/min)</div>
+        <div style="position:relative;width:100%;height:180px">
+          <canvas id="rocChart" role="img" aria-label="Rate of change distribution"></canvas>
+        </div>
       </div>
     </div>
 
@@ -256,7 +283,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="card">
       <div class="card-title purple">Insulin sensitivity — TDD/kg per day</div>
-      <div style="position:relative;width:100%;height:160px">
+      <div id="sensitivity-wrap" style="position:relative;width:100%;height:160px">
         <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
@@ -285,6 +312,7 @@ const ONEDRIVE_URL="https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL
 const LOW=70,HIGH=150,WEIGHT_KG=81.6;
 const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+let tirMode='standard'; // 'standard' (70-150) or 'tight' (70-140)
 let allCGM=[],allBoluses=[],allBasals=[],allMeals=[],allExercise=[];
 let filteredCGM=[],filteredBoluses=[],filteredBasals=[],filteredMeals=[],filteredExercise=[];
 let glucChart=null,tddChart=null,sensitivityChart=null,hourlyAvgChart=null,hourlyLowChart=null,hourlyHighChart=null;
@@ -438,9 +466,23 @@ function applyCustomRange(){
   renderAll();
 }
 
+function setTIRMode(mode,btn){
+  tirMode=mode;
+  const HIGH_TIR=tirMode==='tight'?140:150;
+  const title=tirMode==='tight'?'Time in tight range (70–140 mg/dL)':'Time in range (70–150 mg/dL)';
+  document.getElementById('tir-card-title').textContent=title;
+  document.querySelectorAll('#tir-toggle-std,#tir-toggle-tight').forEach(b=>{
+    b.style.background='none';b.style.color='var(--text3)';
+  });
+  btn.style.background='var(--accent)';btn.style.color='#000';
+  renderAll();
+}
+
 function filterByDays(arr,days){
   if(customFrom&&customTo) return arr.filter(d=>d.t>=customFrom&&d.t<=customTo);
-  const cutoff=Date.now()-days*86400000;
+  // Snap to start of day (midnight) so we get N complete days, not N*24h from now
+  const today=new Date();today.setHours(0,0,0,0);
+  const cutoff=new Date(today.getTime()-( (days-1)*86400000 ));
   return arr.filter(d=>d.t>=cutoff);
 }
 
@@ -462,7 +504,9 @@ function renderAll(){
   renderHourlyLows(filteredCGM);
   renderHourlyHighs(filteredCGM);
   renderOvernightVsDaytime(filteredCGM);
-  renderPostMeal(filteredCGM);
+  renderPostMealCurve(filteredCGM,filteredMeals);
+  renderHistogram(filteredCGM);
+  renderRateOfChange(filteredCGM);
   renderDayOfWeek(filteredCGM,filteredBoluses,filteredBasals);
   renderSensitivityChart(filteredBoluses,filteredBasals);
   renderInsights(filteredCGM,filteredBoluses,filteredBasals);
@@ -471,7 +515,8 @@ function renderAll(){
 function renderMetrics(cgm,boluses,basals){
   const vals=cgm.map(d=>d.v);
   const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
+  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/vals.length*100);
   const sd=Math.round(Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/vals.length));
   const cv=Math.round(sd/avg*100);
   const gmi=Math.round((3.31+0.02392*avg)*100)/100;
@@ -783,13 +828,17 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
 
 function renderTIR(cgm){
   const vals=cgm.map(d=>d.v);
-  const counts=[vals.filter(v=>v<54).length,vals.filter(v=>v>=54&&v<LOW).length,vals.filter(v=>v>=LOW&&v<=HIGH).length,vals.filter(v=>v>HIGH&&v<=250).length,vals.filter(v=>v>250).length];
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
+  const counts=[vals.filter(v=>v<54).length,vals.filter(v=>v>=54&&v<LOW).length,vals.filter(v=>v>=LOW&&v<=HIGH_TIR).length,vals.filter(v=>v>HIGH_TIR&&v<=250).length,vals.filter(v=>v>250).length];
   const p=counts.map(c=>Math.round(c/vals.length*100));
-  const segs=[['#e63a55','Very low','<54 mg/dL — serious hypoglycemia, seizure risk','<1%'],
-    ['#ff4d6d','Low','54–69 mg/dL — symptomatic hypoglycemia','<2% (elite)'],
-    ['#00d4a0','In range','70–150 mg/dL — your personal target range','>85% (elite)'],
-    ['#ffb347','High','150–250 mg/dL — hyperglycemia, long-term risk','<15% (elite)'],
-    ['#e8963a','Very high','>250 mg/dL — DKA risk if sustained','<1%']];
+  const rangeLabel=tirMode==='tight'?'70–140 mg/dL — tight control target':' 70–150 mg/dL — standard target';
+  const highLabel=tirMode==='tight'?'140–250 mg/dL — above tight range':'150–250 mg/dL — hyperglycemia';
+  const tirTarget=tirMode==='tight'?'>50% (ATTD tight range goal)':'>70% (ADA standard), >85% (ATTD T1D goal)';
+  const segs=[['#e63a55','Very low','<54 mg/dL — Level 2 hypoglycemia (ADA). Target <1%','<1%'],
+    ['#ff4d6d','Low','54–69 mg/dL — Level 1 hypoglycemia (ADA). Target <4%','<4%'],
+    ['#00d4a0','In range',rangeLabel,tirTarget],
+    ['#ffb347','High',highLabel,'<25%'],
+    ['#e8963a','Very high','>250 mg/dL — DKA risk if sustained. Target <5%','<5%']];
   const barSegs=segs.map((s,i)=>`<div class="tir-seg" style="width:${p[i]}%;background:${s[0]};min-width:${p[i]>0?'4px':'0'}">${p[i]>=8?`<span style="color:rgba(0,0,0,0.75);text-shadow:none">${p[i]}%</span>`:''}</div>`).join('');
   const rows=segs.map((s,i)=>`
     <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface2);margin-bottom:6px">
@@ -948,7 +997,8 @@ function renderOvernightVsDaytime(cgm){
     if(!arr.length) return null;
     const vals=arr.map(d=>d.v);
     const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-    const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
+    const HIGH_TIR=tirMode==='tight'?140:HIGH;
+  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/vals.length*100);
     const low=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
     const high=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
     return{avg,tir,low,high,n:vals.length};
@@ -971,34 +1021,6 @@ function renderOvernightVsDaytime(cgm){
   document.getElementById('overnight-display').innerHTML=row('Overnight (10pm–6am)',on,'🌙')+row('Daytime (6am–10pm)',da,'☀️');
 }
 
-function renderPostMeal(cgm){
-  const lunch=cgm.filter(d=>{const h=d.t.getHours();return h>=12&&h<14;});
-  const dinner=cgm.filter(d=>{const h=d.t.getHours();return h>=18&&h<20;});
-  function stats(arr,label,icon){
-    if(!arr.length) return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;color:var(--text3);font-size:13px">No data for ${label}</div>`;
-    const vals=arr.map(d=>d.v);
-    const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-    const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
-    const high=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
-    const low=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
-    const sorted=vals.slice().sort((a,b)=>b-a);
-    const top10=sorted.slice(0,Math.max(1,Math.floor(sorted.length*0.1)));
-    const avgPeak=Math.round(top10.reduce((a,b)=>a+b,0)/top10.length);
-    const peakCls=avgPeak>HIGH?'#ffb347':'#00d4a0';
-    const tirCls=tir>=85?'#00d4a0':tir>=70?'#ffb347':'#ff4d6d';
-    const avgCls=avg<=110?'#00d4a0':avg<=130?'var(--text)':'#ffb347';
-    return`<div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px">
-      <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:10px">${icon} ${label}</div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap">
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Avg BG</div><div style="font-size:22px;font-weight:700;color:${avgCls}">${avg}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">TIR</div><div style="font-size:22px;font-weight:700;color:${tirCls}">${tir}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">High</div><div style="font-size:22px;font-weight:700;color:#ffb347">${high}<span style="font-size:11px;font-weight:400;color:var(--text3)">%</span></div></div>
-        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Avg peak</div><div style="font-size:22px;font-weight:700;color:${peakCls}">${avgPeak}<span style="font-size:11px;font-weight:400;color:var(--text3)"> mg/dL</span></div></div>
-      </div>
-    </div>`;
-  }
-  document.getElementById('postmeal-display').innerHTML=stats(lunch,'Lunch window (12p–2p)','🍽️')+stats(dinner,'Dinner window (6p–8p)','🍽️');
-}
 
 function renderDayOfWeek(cgm,boluses,basals){
   const dowData={};
@@ -1113,13 +1135,15 @@ function renderSensitivityChart(boluses,basals){
 }
 
 function renderInsights(cgm,boluses,basals){
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
   const vals=cgm.map(d=>d.v);
   const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   const sd=Math.round(Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/vals.length));
   const cv=Math.round(sd/avg*100);
-  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH).length/vals.length*100);
-  const lowPct=Math.round(vals.filter(v=>v<LOW).length/vals.length*100);
-  const highPct=Math.round(vals.filter(v=>v>HIGH).length/vals.length*100);
+  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/vals.length*100);
+  const lowL2=Math.round(vals.filter(v=>v<54).length/vals.length*100);
+  const lowL1=Math.round(vals.filter(v=>v>=54&&v<LOW).length/vals.length*100);
+  const lowPct=lowL2+lowL1;
   const gmi=Math.round((3.31+0.02392*avg)*100)/100;
   const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
   const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
@@ -1130,78 +1154,209 @@ function renderInsights(cgm,boluses,basals){
   const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
   const pBasal=100-pBolus;
   const hours=Array.from({length:24},()=>({low:0,high:0}));
-  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()].low++;if(d.v>HIGH) hours[d.t.getHours()].high++;});
+  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()].low++;if(d.v>HIGH_TIR) hours[d.t.getHours()].high++;});
   const maxLowH=hours.map(h=>h.low).indexOf(Math.max(...hours.map(h=>h.low)));
   const maxLowC=hours[maxLowH].low;
   const maxHighH=hours.map(h=>h.high).indexOf(Math.max(...hours.map(h=>h.high)));
   const maxHighC=hours[maxHighH].high;
   const hl=h=>h===0?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
-  const blocks=Array.from({length:8},()=>[]);
-  cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
-  const blockAvgs=blocks.map(b=>b.length?Math.round(b.reduce((a,c)=>a+c,0)/b.length):null);
-  const blockNames=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const highBlock=blockAvgs.reduce((best,v,i)=>v!==null&&(best===-1||v>blockAvgs[best])?i:best,-1);
   const overnight=cgm.filter(d=>{const h=d.t.getHours();return h>=22||h<6;});
   const daytime=cgm.filter(d=>{const h=d.t.getHours();return h>=6&&h<22;});
-  const onTIR=overnight.length?Math.round(overnight.filter(d=>d.v>=LOW&&d.v<=HIGH).length/overnight.length*100):null;
-  const dayTIR=daytime.length?Math.round(daytime.filter(d=>d.v>=LOW&&d.v<=HIGH).length/daytime.length*100):null;
+  const onTIR=overnight.length?Math.round(overnight.filter(d=>d.v>=LOW&&d.v<=HIGH_TIR).length/overnight.length*100):null;
+  const dayTIR=daytime.length?Math.round(daytime.filter(d=>d.v>=LOW&&d.v<=HIGH_TIR).length/daytime.length*100):null;
   const dayMap={};
   [...boluses,...basals].forEach(b=>{const k=dayKey(b.t);dayMap[k]=dayMap[k]||{bolus:0,basal:0};if(b.units) dayMap[k].bolus+=b.units;if(b.delivered) dayMap[k].basal+=b.delivered;});
   const dailyTDDs=Object.values(dayMap).map(d=>d.bolus+d.basal);
   let tddTrend=0;
   if(dailyTDDs.length>=3){const mid=Math.floor(dailyTDDs.length/2);const f=dailyTDDs.slice(0,mid).reduce((a,b)=>a+b,0)/mid;const l=dailyTDDs.slice(mid).reduce((a,b)=>a+b,0)/(dailyTDDs.length-mid);tddTrend=l-f;}
-
   const items=[];
-
-  if(tir>=85) items.push({cls:'green',icon:'✓',text:`TIR ${tir}% — elite level`,sub:'Above the 85% elite threshold. Top-performing closed-loop users typically sustain 85–92%.'});
-  else if(tir>=70) items.push({cls:'amber',icon:'!',text:`TIR ${tir}% — meets standard goal, room for elite`,sub:'Clinical target is >70%. Elite target is >85%. Analyze 3-hour blocks and post-meal windows to find where the remaining losses occur.'});
-  else items.push({cls:'red',icon:'!',text:`TIR ${tir}% — below clinical target`,sub:'Goal is >70%. Significant opportunity to improve. Start with the overnight and post-meal sections.'});
-
-  if(cv<=25) items.push({cls:'green',icon:'✓',text:`CV ${cv}% — exceptional stability`,sub:'Below 25% is elite-level glucose variability. Reduces hypoglycemia risk even with aggressive targets.'});
-  else if(cv<=36) items.push({cls:'amber',icon:'!',text:`CV ${cv}% — within standard but above elite`,sub:'Standard target is ≤36%. Elite performers achieve ≤25%. High CV increases hypoglycemia risk and worsens TIR even with good averages.'});
-  else items.push({cls:'red',icon:'!',text:`CV ${cv}% — above target`,sub:'CV >36% indicates high variability. Prioritize reducing swings before chasing lower average BG.'});
-
-  if(gmi<6.5) items.push({cls:'green',icon:'✓',text:`GMI ${gmi}% — elite range`,sub:'Below 6.5% GMI indicates outstanding glucose management for T1D on a closed loop.'});
-  else if(gmi<7) items.push({cls:'amber',icon:'!',text:`GMI ${gmi}% — good, approaching elite`,sub:'Elite target is <6.5%. Each 0.1% GMI reduction requires roughly 5–8 mg/dL lower average BG.'});
-  else items.push({cls:'red',icon:'!',text:`GMI ${gmi}% — above elite target`,sub:'Target GMI <7% (standard) and <6.5% (elite). Focus on post-meal and overnight control.'});
-
-  if(lowPct<1) items.push({cls:'green',icon:'✓',text:`Low burden ${lowPct}% — excellent`,sub:'Below 1% is elite. Sustained low burden this low while maintaining good TIR indicates well-balanced Loop settings.'});
-  else if(lowPct<2) items.push({cls:'green',icon:'✓',text:`Low burden ${lowPct}% — meets elite target`,sub:'Elite target is <2%. Continue monitoring for clustering patterns by hour.'});
-  else if(lowPct<4) items.push({cls:'amber',icon:'!',text:`Low burden ${lowPct}% — monitor`,sub:'Standard target is <4%, elite is <2%. Check the low events by hour chart for recurring patterns.'});
-  else items.push({cls:'red',icon:'!',text:`Low burden ${lowPct}% — above target`,sub:'Above the 4% clinical threshold. Review overnight basal rates and activity timing.'});
-
-  if(maxLowC>=3) items.push({cls:'amber',icon:'!',text:`Recurring lows at ${hl(maxLowH)} (${maxLowC} events)`,sub:'Pattern of lows at this hour over the selected period. Consider targeted basal adjustment or reviewing carb/activity timing around this window.'});
-  if(maxHighC>=5) items.push({cls:'amber',icon:'!',text:`Recurring highs at ${hl(maxHighH)} (${maxHighC} events)`,sub:'Consistent post-meal or sustained highs at this hour. Consider earlier pre-bolus timing or reviewing carb ratios for this meal window.'});
-
-  if(highBlock>=0&&blockAvgs[highBlock]>125) items.push({cls:'amber',icon:'!',text:`Highest avg BG in ${blockNames[highBlock]} block (${blockAvgs[highBlock]} mg/dL)`,sub:'This time block consistently runs above your ideal. If it follows a meal window, earlier pre-bolusing may help. If overnight, consider basal review.'});
-
+  const tirTarget=tirMode==='tight'?50:70;
+  const tirElite=tirMode==='tight'?null:85;
+  const tirSource=tirMode==='tight'?'ATTD 2023 consensus':'ADA Standards of Care 2024';
+  if(tirElite&&tir>=tirElite) items.push({cls:'green',icon:'✓',text:`TIR ${tir}% — above ATTD T1D target`,sub:`ATTD 2023 consensus aspirational target for T1D on closed loop is >85%. ADA 2024 minimum is >70%. Source: ${tirSource}.`});
+  else if(tir>=tirTarget) items.push({cls:'amber',icon:'!',text:`TIR ${tir}% — meets ADA minimum target`,sub:`ADA 2024 Standards of Care: TIR goal ≥${tirTarget}% for T1D. ATTD consensus sets aspirational target at >85% for closed-loop systems. Source: ${tirSource}.`});
+  else items.push({cls:'red',icon:'!',text:`TIR ${tir}% — below ADA minimum target`,sub:`ADA 2024: TIR goal ≥${tirTarget}% for T1D. Current value is below guideline minimum. Level 2 hypo (<54): ${lowL2}% · Level 1 (54–69): ${lowL1}%. Source: ${tirSource}.`});
+  if(cv<=25) items.push({cls:'green',icon:'✓',text:`CV ${cv}% — below ATTD target`,sub:'ATTD 2017/2023 consensus: CV ≤36% is the clinical target for acceptable glycemic variability. Values ≤25% are associated with reduced hypoglycemia risk on closed-loop systems.'});
+  else if(cv<=36) items.push({cls:'amber',icon:'!',text:`CV ${cv}% — within ATTD target`,sub:'ATTD consensus CV target is ≤36%. This is clinically acceptable variability. CV above 25% is associated with increased hypoglycemia risk even at good average glucose levels.'});
+  else items.push({cls:'red',icon:'!',text:`CV ${cv}% — above ATTD target`,sub:'ATTD consensus: CV >36% indicates excessive glycemic variability. This threshold is independently associated with increased hypoglycemia risk and reduced time in range.'});
+  if(gmi<6.5) items.push({cls:'green',icon:'✓',text:`GMI ${gmi}% — strong`,sub:'GMI (Glucose Management Indicator) is estimated from CGM average glucose (Bergenstal et al., Diabetes Care 2018). ADA 2024: GMI <7% is the general T1D target. Values <6.5% reflect strong overall control.'});
+  else if(gmi<7) items.push({cls:'amber',icon:'!',text:`GMI ${gmi}% — at ADA target`,sub:'ADA 2024 Standards of Care: A1C/GMI target <7% for most T1D adults. GMI is a validated CGM-derived estimate of A1C (Bergenstal et al., Diabetes Care 2018).'});
+  else items.push({cls:'red',icon:'!',text:`GMI ${gmi}% — above ADA target`,sub:'ADA 2024: A1C/GMI target <7% for most T1D adults. Note: GMI may differ from lab A1C due to individual variation in red blood cell turnover (Diabetes Care 2018).'});
+  if(lowL2>=1) items.push({cls:'red',icon:'!',text:`Level 2 hypo (<54 mg/dL): ${lowL2}% of readings`,sub:'ADA 2024 / ATTD consensus: Time below 54 mg/dL (Level 2 hypoglycemia) target is <1%. This threshold is associated with severe hypoglycemia risk and impaired hypoglycemia awareness.'});
+  else if(lowPct>=4) items.push({cls:'red',icon:'!',text:`Time below range ${lowPct}% — above ADA target`,sub:`ADA 2024 / ATTD: Time below range (<70 mg/dL) target is <4% for T1D. Level 1 (54–69 mg/dL): ${lowL1}% · Level 2 (<54 mg/dL): ${lowL2}%.`});
+  else if(lowPct>=2) items.push({cls:'amber',icon:'!',text:`Time below range ${lowPct}% — monitor`,sub:`ATTD aspirational target: <2% time below range. ADA minimum target: <4%. Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%.`});
+  else items.push({cls:'green',icon:'✓',text:`Time below range ${lowPct}% — within ATTD target`,sub:`ATTD consensus: <2% time below range (<70 mg/dL). Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%. Both within ADA/ATTD targets.`});
+  if(maxLowC>=3) items.push({cls:'amber',icon:'!',text:`Low pattern at ${hl(maxLowH)} — ${maxLowC} events`,sub:`${maxLowC} readings below 70 mg/dL concentrated at this hour across the selected period. ATTD guidance: recurring time below range at a specific hour may reflect systematic insulin delivery patterns.`});
+  if(maxHighC>=5) items.push({cls:'amber',icon:'!',text:`High pattern at ${hl(maxHighH)} — ${maxHighC} events`,sub:`${maxHighC} readings above ${HIGH_TIR} mg/dL concentrated at this hour. ATTD: time above range target is <25% (>180 mg/dL) or <10% (>250 mg/dL).`});
   if(onTIR!==null&&dayTIR!==null){
-    if(onTIR>=85&&dayTIR>=85) items.push({cls:'green',icon:'✓',text:`Strong TIR both overnight (${onTIR}%) and daytime (${dayTIR}%)`,sub:'Consistent control across all periods is the hallmark of elite closed-loop management.'});
-    else if(onTIR<dayTIR-15) items.push({cls:'amber',icon:'!',text:`Overnight TIR (${onTIR}%) lags daytime (${dayTIR}%)`,sub:'Overnight control is the biggest lever for many T1D looper. Review overnight basal profile and consider whether dawn phenomenon is a factor.'});
-    else if(dayTIR<onTIR-15) items.push({cls:'amber',icon:'!',text:`Daytime TIR (${dayTIR}%) lags overnight (${onTIR}%)`,sub:'Post-meal spikes are likely the main driver. Consider carb ratio adjustments, pre-bolus timing, and reviewing meal-time insulin activity curves.'});
+    if(onTIR>=85&&dayTIR>=85) items.push({cls:'green',icon:'✓',text:`Overnight TIR ${onTIR}% · Daytime TIR ${dayTIR}%`,sub:'Both overnight and daytime TIR exceed the ATTD 85% aspirational threshold. ATTD 2023: consistent TIR across all periods is a marker of effective closed-loop performance.'});
+    else if(onTIR<dayTIR-15) items.push({cls:'amber',icon:'!',text:`Overnight TIR (${onTIR}%) lags daytime (${dayTIR}%)`,sub:'Overnight TIR is >15 percentage points below daytime. ATTD notes that nocturnal hypoglycemia carries elevated clinical risk due to impaired hypoglycemia awareness during sleep.'});
+    else if(dayTIR<onTIR-15) items.push({cls:'amber',icon:'!',text:`Daytime TIR (${dayTIR}%) lags overnight (${onTIR}%)`,sub:'Daytime TIR is >15 points below overnight. This pattern is consistent with postprandial glycemic excursions, a common contributor to reduced TIR in closed-loop T1D management.'});
   }
-
-  if(pBolus>60) items.push({cls:'amber',icon:'!',text:`Bolus-heavy split (${pBolus}% bolus / ${pBasal}% basal)`,sub:'Optimal for closed loop is typically 50–55% bolus. Higher bolus % may indicate frequent correction doses, undertreated basal, or aggressive meal dosing.'});
-  else if(pBasal>60) items.push({cls:'amber',icon:'!',text:`Basal-heavy split (${pBasal}% basal / ${pBolus}% bolus)`,sub:'Loop delivering significant automated basal. May indicate scheduled basal set higher than needed, with Loop over-correcting upward.'});
-  else items.push({cls:'green',icon:'✓',text:`Balanced split (${pBolus}% bolus / ${pBasal}% basal)`,sub:'Near the optimal 50–55% bolus ratio for closed-loop delivery. Indicates well-calibrated basal and meal dosing.'});
-
-  if(tddKg<=0.35) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — excellent insulin sensitivity`,sub:'Below 0.35 u/kg is in the top range for T1D. Track over time to monitor for upward drift which may signal early resistance.'});
-  else if(tddKg<=0.45) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — good sensitivity`,sub:'Within the 0.35–0.45 u/kg range seen in well-controlled T1D. Continue tracking trend over 30–60 day windows.'});
-  else if(tddKg<=0.6) items.push({cls:'amber',icon:'!',text:`TDD/kg ${tddKg} u/kg — mid-normal range`,sub:'Typical T1D range is 0.4–0.6 u/kg. Values in the upper half may warrant monitoring alongside TG:HDL ratio.'});
-  else items.push({cls:'red',icon:'!',text:`TDD/kg ${tddKg} u/kg — above typical range`,sub:'Above 0.6 u/kg suggests possible insulin resistance. Cross-reference with TG:HDL and eGDR. Consider discussing with your endo.'});
-
-  if(tddTrend>2) items.push({cls:'amber',icon:'!',text:`TDD trending up ~${Math.round(tddTrend*10)/10}u over period`,sub:'Increasing insulin needs over time. Possible causes: higher carb load, reduced activity, hormonal cycle, early insulin resistance. Track alongside TDD/kg.'});
-  else if(tddTrend<-2) items.push({cls:'green',icon:'✓',text:`TDD trending down ~${Math.round(Math.abs(tddTrend)*10)/10}u over period`,sub:'Decreasing insulin needs — positive signal for improving sensitivity. Ensure this is intentional and not driven by undereating or excessive hypoglycemia.'});
-
+  if(pBolus>60) items.push({cls:'amber',icon:'!',text:`Bolus-heavy split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Published AID system data (Breton et al., NEJM 2021) reports typical bolus:basal ratios of approximately 45–55% bolus. Higher bolus proportion may reflect frequent corrections or higher carbohydrate intake.'});
+  else if(pBasal>60) items.push({cls:'amber',icon:'!',text:`Basal-heavy split: ${pBasal}% basal / ${pBolus}% bolus`,sub:'Automated insulin delivery systems typically deliver 45–55% as bolus insulin. Higher automated basal proportion may reflect sustained hyperglycemia correction or lower meal-time insulin requirements.'});
+  else items.push({cls:'green',icon:'✓',text:`Balanced split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Bolus:basal ratio is within the typical range reported in closed-loop clinical trials (45–55% bolus). This pattern is consistent with balanced meal and correction dosing (Breton et al., NEJM 2021).'});
+  if(tddKg<=0.4) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — low-normal range`,sub:'Published T1D literature reports typical TDD of 0.4–0.7 u/kg/day. Values below 0.4 suggest high insulin sensitivity or lower carbohydrate intake relative to body weight.'});
+  else if(tddKg<=0.6) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — typical range`,sub:'Within the typical T1D TDD range of 0.4–0.7 u/kg/day. TDD/kg is a useful longitudinal marker for tracking insulin requirement trends over time.'});
+  else if(tddKg<=0.7) items.push({cls:'amber',icon:'!',text:`TDD/kg ${tddKg} u/kg — upper typical range`,sub:'Approaching the upper end of the typical T1D TDD range (0.4–0.7 u/kg/day). Sustained upward trend may reflect changes in carbohydrate intake, activity level, or insulin sensitivity.'});
+  else items.push({cls:'red',icon:'!',text:`TDD/kg ${tddKg} u/kg — above typical range`,sub:'Above the typical T1D TDD range of 0.4–0.7 u/kg/day. Persistent elevation warrants monitoring alongside insulin resistance proxy markers (TG:HDL ratio, eGDR).'});
+  if(tddTrend>2) items.push({cls:'amber',icon:'!',text:`TDD trending up ~${Math.round(tddTrend*10)/10}u over period`,sub:'Total daily insulin has increased across this period. Potential contributors include higher carbohydrate intake, reduced physical activity, hormonal variation, or changes in insulin sensitivity.'});
+  else if(tddTrend<-2) items.push({cls:'green',icon:'✓',text:`TDD trending down ~${Math.round(Math.abs(tddTrend)*10)/10}u over period`,sub:'Total daily insulin has decreased across this period, consistent with improving insulin sensitivity, reduced carbohydrate intake, or increased physical activity.'});
   const green=items.filter(i=>i.cls==='green').length;
   const amber=items.filter(i=>i.cls==='amber').length;
   const red=items.filter(i=>i.cls==='red').length;
-  document.getElementById('insights-summary').textContent=`${green} on target · ${amber} watch · ${red} action needed`;
+  document.getElementById('insights-summary').textContent=`${green} within target · ${amber} monitor · ${red} below target`;
   document.getElementById('insights-body').innerHTML=items.map(i=>`
     <div class="insight ${i.cls}">
       <div class="insight-icon">${i.icon}</div>
       <div><div class="insight-text">${i.text}</div><div class="insight-sub">${i.sub}</div></div>
     </div>`).join('');
+}
+
+
+// ── POST-MEAL RESPONSE CURVE ─────────────────────────────────────────────
+let postmealCurveChart=null;
+function renderPostMealCurve(cgm,meals){
+  if(postmealCurveChart) postmealCurveChart.destroy();
+  const canvas=document.getElementById('postmealCurveChart');
+  const statsEl=document.getElementById('postmeal-stats');
+  if(!canvas) return;
+  if(!meals||!meals.length){
+    if(statsEl) statsEl.innerHTML='<div style="font-size:12px;color:var(--text3)">No meal data available. Run the updated sync script to pull carb entries from Tidepool.</div>';
+    return;
+  }
+  // For each meal, collect CGM readings from -120min to +180min relative to meal time
+  // Build average curve at 5-min resolution across all meals
+  const BEFORE=120,AFTER=180,STEP=5;
+  const buckets={};
+  for(let m=-BEFORE;m<=AFTER;m+=STEP) buckets[m]=[];
+  let mealCount=0;
+  meals.forEach(meal=>{
+    const mT=meal.t.getTime();
+    const relevant=cgm.filter(d=>Math.abs(d.t.getTime()-mT)<=( (BEFORE+AFTER)*60000 ));
+    if(relevant.length<5) return;
+    mealCount++;
+    for(let min=-BEFORE;min<=AFTER;min+=STEP){
+      const target=mT+min*60000;
+      const near=relevant.reduce((best,d)=>Math.abs(d.t.getTime()-target)<Math.abs(best.t.getTime()-target)?d:best,relevant[0]);
+      if(Math.abs(near.t.getTime()-target)<8*60000) buckets[min].push(near.v);
+    }
+  });
+  if(mealCount===0){
+    if(statsEl) statsEl.innerHTML='<div style="font-size:12px;color:var(--text3)">No meals with sufficient CGM data found in this range.</div>';
+    return;
+  }
+  const labels=Object.keys(buckets).map(Number).sort((a,b)=>a-b);
+  const avgCurve=labels.map(m=>buckets[m].length?Math.round(buckets[m].reduce((a,b)=>a+b,0)/buckets[m].length):null);
+  // Find baseline (avg of -30 to 0 min), peak, delta
+  const baselineMins=labels.filter(m=>m>=-30&&m<=0);
+  const baselineVals=baselineMins.map(m=>avgCurve[labels.indexOf(m)]).filter(v=>v!=null);
+  const baseline=baselineVals.length?Math.round(baselineVals.reduce((a,b)=>a+b,0)/baselineVals.length):null;
+  const postPeak=Math.max(...avgCurve.filter(v=>v!=null));
+  const peakIdx=avgCurve.indexOf(postPeak);
+  const peakMin=labels[peakIdx];
+  const delta=baseline?postPeak-baseline:null;
+  const returnIdx=peakIdx!==null?avgCurve.slice(peakIdx).findIndex((v,i)=>v!=null&&v<=(baseline||postPeak-10)):null;
+  const returnMin=returnIdx!==null&&returnIdx>=0?labels[peakIdx+returnIdx]:null;
+  const grid='rgba(255,255,255,0.05)';
+  const labelData=labels.map(m=>m===0?'Meal':(m>0?'+'+m+'m':m+'m'));
+  postmealCurveChart=new Chart(canvas,{
+    type:'line',
+    data:{labels:labelData,datasets:[
+      {data:avgCurve,borderColor:'#f472b6',borderWidth:2,pointRadius:0,tension:0.3,fill:false,datalabels:{display:false}},
+      {data:labels.map(()=>baseline),borderColor:'rgba(255,255,255,0.15)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},datalabels:{display:false},
+        tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':''}}},
+      scales:{
+        x:{ticks:{color:'#505058',font:{size:9},maxTicksLimit:12},grid:{color:grid}},
+        y:{ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
+      }}
+  });
+  if(statsEl){
+    const HIGH_TIR=tirMode==='tight'?140:HIGH;
+    const peakCls=postPeak>HIGH_TIR?'color:#ffb347':'color:#00d4a0';
+    statsEl.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px">
+      <div><span style="color:var(--text3)">Meals analyzed</span><br><strong>${mealCount}</strong></div>
+      ${baseline?`<div><span style="color:var(--text3)">Pre-meal avg</span><br><strong>${baseline} mg/dL</strong></div>`:''}
+      <div><span style="color:var(--text3)">Avg peak</span><br><strong style="${peakCls}">${postPeak} mg/dL</strong></div>
+      ${delta?`<div><span style="color:var(--text3)">Avg rise</span><br><strong style="${peakCls}">+${delta} mg/dL</strong></div>`:''}
+      ${peakMin!==null?`<div><span style="color:var(--text3)">Peak at</span><br><strong>+${peakMin}min</strong></div>`:''}
+      ${returnMin?`<div><span style="color:var(--text3)">Returns ~</span><br><strong>+${returnMin}min</strong></div>`:''}
+    </div>`;
+  }
+}
+
+// ── GLUCOSE HISTOGRAM ──────────────────────────────────────────────────────
+let histogramChart=null;
+function renderHistogram(cgm){
+  if(histogramChart) histogramChart.destroy();
+  const canvas=document.getElementById('histogramChart');
+  if(!canvas||!cgm.length) return;
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
+  // 10 mg/dL buckets from 40 to 400
+  const MIN=40,MAX=310,BUCKET=10;
+  const buckets=[];
+  for(let v=MIN;v<MAX;v+=BUCKET){
+    const count=cgm.filter(d=>d.v>=v&&d.v<v+BUCKET).length;
+    const pct=Math.round(count/cgm.length*100);
+    const midpoint=v+BUCKET/2;
+    const color=midpoint<LOW?'rgba(255,77,109,0.75)':midpoint>HIGH_TIR?'rgba(255,179,71,0.75)':'rgba(0,212,160,0.75)';
+    buckets.push({label:`${v}`,count,pct,color});
+  }
+  const grid='rgba(255,255,255,0.05)';
+  histogramChart=new Chart(canvas,{
+    type:'bar',
+    data:{labels:buckets.map(b=>b.label),datasets:[{data:buckets.map(b=>b.pct),backgroundColor:buckets.map(b=>b.color),borderRadius:2,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},datalabels:{display:false},
+        tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y}% of readings`}}},
+      scales:{
+        x:{ticks:{color:'#505058',font:{size:9},maxTicksLimit:15},grid:{display:false},title:{display:true,text:'mg/dL',color:'#505058',font:{size:9}}},
+        y:{ticks:{color:'#505058',font:{size:9},callback:v=>v+'%'},grid:{color:grid}}
+      }}
+  });
+}
+
+// ── RATE OF CHANGE ─────────────────────────────────────────────────────────
+let rocChart=null;
+function renderRateOfChange(cgm){
+  if(rocChart) rocChart.destroy();
+  const canvas=document.getElementById('rocChart');
+  if(!canvas||cgm.length<2) return;
+  // Calculate 5-min rate of change for consecutive readings
+  const rocs=[];
+  for(let i=1;i<cgm.length;i++){
+    const dt=(cgm[i].t-cgm[i-1].t)/60000; // minutes
+    if(dt>0&&dt<=10){ // only use readings within 10 min of each other
+      rocs.push((cgm[i].v-cgm[i-1].v)/dt);
+    }
+  }
+  if(!rocs.length) return;
+  // Bucket into rate categories (mg/dL/min)
+  const cats=[
+    {label:'↓↓ <-2',min:-99,max:-2,color:'rgba(230,58,85,0.8)'},
+    {label:'↓ -2 to -1',min:-2,max:-1,color:'rgba(255,77,109,0.7)'},
+    {label:'↘ -1 to -0.5',min:-1,max:-0.5,color:'rgba(255,179,71,0.6)'},
+    {label:'→ stable',min:-0.5,max:0.5,color:'rgba(0,212,160,0.75)'},
+    {label:'↗ 0.5 to 1',min:0.5,max:1,color:'rgba(255,179,71,0.6)'},
+    {label:'↑ 1 to 2',min:1,max:2,color:'rgba(255,77,109,0.7)'},
+    {label:'↑↑ >2',min:2,max:99,color:'rgba(230,58,85,0.8)'},
+  ];
+  const data=cats.map(c=>Math.round(rocs.filter(r=>r>=c.min&&r<c.max).length/rocs.length*100));
+  const grid='rgba(255,255,255,0.05)';
+  rocChart=new Chart(canvas,{
+    type:'bar',
+    data:{labels:cats.map(c=>c.label),datasets:[{data,backgroundColor:cats.map(c=>c.color),borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},datalabels:{display:false},
+        tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y}% of readings`}}},
+      scales:{
+        x:{ticks:{color:'#505058',font:{size:9}},grid:{display:false}},
+        y:{ticks:{color:'#505058',font:{size:9},callback:v=>v+'%'},grid:{color:grid}}
+      }}
+  });
 }
 
 function toggleInsights(){
