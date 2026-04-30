@@ -211,9 +211,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="card">
         <div class="card-title" id="tir-card-title">Time in range (70–180 mg/dL)</div>
         <div id="tir-display"></div>
+        <div id="insight-tir" style="margin-top:10px"></div>
       </div>
       <div class="card">
         <div class="card-title">Average glucose by 3-hour block</div>
+        <div id="insight-hourly" style="margin-bottom:10px"></div>
         <div style="position:relative;width:100%;height:220px">
           <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
         </div>
@@ -241,6 +243,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Avg glucose by hour of day · 🌙 overnight (10pm–6am) vs ☀️ daytime</div>
         <div style="position:relative;width:100%;height:200px"><canvas id="overnightChart" role="img" aria-label="Overnight vs daytime"></canvas></div>
         <div id="overnight-stats" style="margin-top:10px"></div>
+        <div id="insight-overnight" style="margin-top:8px"></div>
       </div>
       <div class="card">
         <div class="card-title">Post-meal glucose response</div>
@@ -249,12 +252,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <canvas id="postmealCurveChart" role="img" aria-label="Post-meal response curve"></canvas>
         </div>
         <div id="postmeal-stats" style="margin-top:10px"></div>
+        <div id="insight-postmeal" style="margin-top:8px"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Day of week breakdown</div>
       <div id="dow-display"></div>
+      <div id="insight-dow" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
@@ -273,21 +278,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
+      <div id="insight-sensitivity" style="margin-top:10px"></div>
     </div>
 
-    <div class="insights-dropdown">
-      <div class="insights-header" onclick="toggleInsights()">
-        <div class="insights-header-left">
-          <span style="font-size:16px">💡</span>
-          <div>
-            <div class="insights-title">Insights & recommendations</div>
-            <div class="insights-summary" id="insights-summary">Loading...</div>
-          </div>
-        </div>
-        <span class="insights-chevron" id="insights-chevron">▼</span>
-      </div>
-      <div class="insights-body" id="insights-body"></div>
-    </div>
+
 
   </div>
 </div>
@@ -573,12 +567,12 @@ function renderMetrics(cgm,boluses,basals){
     <div class="metrics-section" style="flex:2">
       <div class="metrics-section-label ins" style="display:flex;align-items:center;justify-content:space-between">
         <span>Insulin</span>
-        <span style="font-size:10px;font-weight:500;display:flex;align-items:center;gap:5px">
-          <span style="color:rgba(167,139,250,0.7)">Weight:</span>
-          <input type="number" id="weight-input" value="${WEIGHT_KG}" min="30" max="200" step="0.5"
-            onchange="updateWeight(this.value)"
-            style="width:48px;background:transparent;border:none;border-bottom:1px solid rgba(167,139,250,0.4);color:var(--purple);font-size:10px;font-weight:600;text-align:center;outline:none;padding:1px 2px"/>
-          <span style="color:rgba(167,139,250,0.7)">kg</span>
+        <span style="font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px">
+          <span style="color:var(--purple)">kg:</span>
+          <input type="text" inputmode="decimal" id="weight-input" value="${WEIGHT_KG}"
+            onchange="updateWeight(this.value)" onblur="updateWeight(this.value)"
+            style="width:52px;background:rgba(167,139,250,0.12);border:1.5px solid rgba(167,139,250,0.5);border-radius:12px;color:var(--purple);font-size:11px;font-weight:700;text-align:center;outline:none;padding:3px 6px;-moz-appearance:textfield;"/>
+
         </span>
       </div>
       <div class="metrics-row">
@@ -1069,8 +1063,8 @@ function renderOvernightVsDaytime(cgm){
   window.overnightChart=new Chart(canvas,{
     type:'line',
     data:{labels,datasets:[
-      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:h=>isOvernight(h)?3:0,pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
-      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:h=>!isOvernight(h)?3:0,pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
+      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:overnightConn.map((v,h)=>v!=null&&isOvernight(h)?3:0),pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
+      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:daytimeConn.map((v,h)=>v!=null&&!isOvernight(h)?3:0),pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
       {label:'Upper',data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
       {label:'Lower',data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
     ]},
@@ -1272,44 +1266,56 @@ function renderInsights(cgm,boluses,basals){
   const tirTarget=tirMode==='tight'?50:70;
   const tirElite=tirMode==='tight'?null:85;
   const tirSource=tirMode==='tight'?'ATTD 2023 consensus':'ADA Standards of Care 2024';
-  if(tirElite&&tir>=tirElite) items.push({cls:'green',icon:'✓',text:`TIR ${tir}% — above ATTD T1D target`,sub:`ATTD 2023 consensus aspirational target for T1D on closed loop is >85%. ADA 2024 minimum is >70%. Source: ${tirSource}.`});
-  else if(tir>=tirTarget) items.push({cls:'amber',icon:'!',text:`TIR ${tir}% — meets ADA minimum target`,sub:`ADA 2024 Standards of Care: TIR goal ≥${tirTarget}% for T1D. ATTD consensus sets aspirational target at >85% for closed-loop systems. Source: ${tirSource}.`});
-  else items.push({cls:'red',icon:'!',text:`TIR ${tir}% — below ADA minimum target`,sub:`ADA 2024: TIR goal ≥${tirTarget}% for T1D. Current value is below guideline minimum. Level 2 hypo (<54): ${lowL2}% · Level 1 (54–69): ${lowL1}%. Source: ${tirSource}.`});
-  if(cv<=25) items.push({cls:'green',icon:'✓',text:`CV ${cv}% — below ATTD target`,sub:'ATTD 2017/2023 consensus: CV ≤36% is the clinical target for acceptable glycemic variability. Values ≤25% are associated with reduced hypoglycemia risk on closed-loop systems.'});
-  else if(cv<=36) items.push({cls:'amber',icon:'!',text:`CV ${cv}% — within ATTD target`,sub:'ATTD consensus CV target is ≤36%. This is clinically acceptable variability. CV above 25% is associated with increased hypoglycemia risk even at good average glucose levels.'});
-  else items.push({cls:'red',icon:'!',text:`CV ${cv}% — above ATTD target`,sub:'ATTD consensus: CV >36% indicates excessive glycemic variability. This threshold is independently associated with increased hypoglycemia risk and reduced time in range.'});
-  if(gmi<6.5) items.push({cls:'green',icon:'✓',text:`GMI ${gmi}% — strong`,sub:'GMI (Glucose Management Indicator) is estimated from CGM average glucose (Bergenstal et al., Diabetes Care 2018). ADA 2024: GMI <7% is the general T1D target. Values <6.5% reflect strong overall control.'});
-  else if(gmi<7) items.push({cls:'amber',icon:'!',text:`GMI ${gmi}% — at ADA target`,sub:'ADA 2024 Standards of Care: A1C/GMI target <7% for most T1D adults. GMI is a validated CGM-derived estimate of A1C (Bergenstal et al., Diabetes Care 2018).'});
-  else items.push({cls:'red',icon:'!',text:`GMI ${gmi}% — above ADA target`,sub:'ADA 2024: A1C/GMI target <7% for most T1D adults. Note: GMI may differ from lab A1C due to individual variation in red blood cell turnover (Diabetes Care 2018).'});
-  if(lowL2>=1) items.push({cls:'red',icon:'!',text:`Level 2 hypo (<54 mg/dL): ${lowL2}% of readings`,sub:'ADA 2024 / ATTD consensus: Time below 54 mg/dL (Level 2 hypoglycemia) target is <1%. This threshold is associated with severe hypoglycemia risk and impaired hypoglycemia awareness.'});
-  else if(lowPct>=4) items.push({cls:'red',icon:'!',text:`Time below range ${lowPct}% — above ADA target`,sub:`ADA 2024 / ATTD: Time below range (<70 mg/dL) target is <4% for T1D. Level 1 (54–69 mg/dL): ${lowL1}% · Level 2 (<54 mg/dL): ${lowL2}%.`});
-  else if(lowPct>=2) items.push({cls:'amber',icon:'!',text:`Time below range ${lowPct}% — monitor`,sub:`ATTD aspirational target: <2% time below range. ADA minimum target: <4%. Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%.`});
-  else items.push({cls:'green',icon:'✓',text:`Time below range ${lowPct}% — within ATTD target`,sub:`ATTD consensus: <2% time below range (<70 mg/dL). Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%. Both within ADA/ATTD targets.`});
-  if(maxLowC>=3) items.push({cls:'amber',icon:'!',text:`Low pattern at ${hl(maxLowH)} — ${maxLowC} events`,sub:`${maxLowC} readings below 70 mg/dL concentrated at this hour across the selected period. ATTD guidance: recurring time below range at a specific hour may reflect systematic insulin delivery patterns.`});
-  if(maxHighC>=5) items.push({cls:'amber',icon:'!',text:`High pattern at ${hl(maxHighH)} — ${maxHighC} events`,sub:`${maxHighC} readings above ${HIGH_TIR} mg/dL concentrated at this hour. ATTD: time above range target is <25% (>180 mg/dL) or <10% (>250 mg/dL).`});
+  if(tirElite&&tir>=tirElite) items.push({key:'tir',cls:'green',icon:'✓',text:`TIR ${tir}% — above ATTD T1D target`,sub:`ATTD 2023 consensus aspirational target for T1D on closed loop is >85%. ADA 2024 minimum is >70%. Source: ${tirSource}.`});
+  else if(tir>=tirTarget) items.push({key:'tir',cls:'amber',icon:'!',text:`TIR ${tir}% — meets ADA minimum target`,sub:`ADA 2024 Standards of Care: TIR goal ≥${tirTarget}% for T1D. ATTD consensus sets aspirational target at >85% for closed-loop systems. Source: ${tirSource}.`});
+  else items.push({key:'tir',cls:'red',icon:'!',text:`TIR ${tir}% — below ADA minimum target`,sub:`ADA 2024: TIR goal ≥${tirTarget}% for T1D. Current value is below guideline minimum. Level 2 hypo (<54): ${lowL2}% · Level 1 (54–69): ${lowL1}%. Source: ${tirSource}.`});
+  if(cv<=25) items.push({key:'cv',cls:'green',icon:'✓',text:`CV ${cv}% — below ATTD target`,sub:'ATTD 2017/2023 consensus: CV ≤36% is the clinical target for acceptable glycemic variability. Values ≤25% are associated with reduced hypoglycemia risk on closed-loop systems.'});
+  else if(cv<=36) items.push({key:'cv',cls:'amber',icon:'!',text:`CV ${cv}% — within ATTD target`,sub:'ATTD consensus CV target is ≤36%. This is clinically acceptable variability. CV above 25% is associated with increased hypoglycemia risk even at good average glucose levels.'});
+  else items.push({key:'cv',cls:'red',icon:'!',text:`CV ${cv}% — above ATTD target`,sub:'ATTD consensus: CV >36% indicates excessive glycemic variability. This threshold is independently associated with increased hypoglycemia risk and reduced time in range.'});
+  if(gmi<6.5) items.push({key:'gmi',cls:'green',icon:'✓',text:`GMI ${gmi}% — strong`,sub:'GMI (Glucose Management Indicator) is estimated from CGM average glucose (Bergenstal et al., Diabetes Care 2018). ADA 2024: GMI <7% is the general T1D target. Values <6.5% reflect strong overall control.'});
+  else if(gmi<7) items.push({key:'gmi',cls:'amber',icon:'!',text:`GMI ${gmi}% — at ADA target`,sub:'ADA 2024 Standards of Care: A1C/GMI target <7% for most T1D adults. GMI is a validated CGM-derived estimate of A1C (Bergenstal et al., Diabetes Care 2018).'});
+  else items.push({key:'gmi',cls:'red',icon:'!',text:`GMI ${gmi}% — above ADA target`,sub:'ADA 2024: A1C/GMI target <7% for most T1D adults. Note: GMI may differ from lab A1C due to individual variation in red blood cell turnover (Diabetes Care 2018).'});
+  if(lowL2>=1) items.push({key:'lowL2',cls:'red',icon:'!',text:`Level 2 hypo (<54 mg/dL): ${lowL2}% of readings`,sub:'ADA 2024 / ATTD consensus: Time below 54 mg/dL (Level 2 hypoglycemia) target is <1%. This threshold is associated with severe hypoglycemia risk and impaired hypoglycemia awareness.'});
+  else if(lowPct>=4) items.push({key:'lowPct',cls:'red',icon:'!',text:`Time below range ${lowPct}% — above ADA target`,sub:`ADA 2024 / ATTD: Time below range (<70 mg/dL) target is <4% for T1D. Level 1 (54–69 mg/dL): ${lowL1}% · Level 2 (<54 mg/dL): ${lowL2}%.`});
+  else if(lowPct>=2) items.push({key:'lowPct',cls:'amber',icon:'!',text:`Time below range ${lowPct}% — monitor`,sub:`ATTD aspirational target: <2% time below range. ADA minimum target: <4%. Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%.`});
+  else items.push({key:'lowPct',cls:'green',icon:'✓',text:`Time below range ${lowPct}% — within ATTD target`,sub:`ATTD consensus: <2% time below range (<70 mg/dL). Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%. Both within ADA/ATTD targets.`});
+  if(maxLowC>=3) items.push({key:'lowPattern',cls:'amber',icon:'!',text:`Low pattern at ${hl(maxLowH)} — ${maxLowC} events`,sub:`${maxLowC} readings below 70 mg/dL concentrated at this hour across the selected period. ATTD guidance: recurring time below range at a specific hour may reflect systematic insulin delivery patterns.`});
+  if(maxHighC>=5) items.push({key:'highPattern',cls:'amber',icon:'!',text:`High pattern at ${hl(maxHighH)} — ${maxHighC} events`,sub:`${maxHighC} readings above ${HIGH_TIR} mg/dL concentrated at this hour. ATTD: time above range target is <25% (>180 mg/dL) or <10% (>250 mg/dL).`});
   if(onTIR!==null&&dayTIR!==null){
-    if(onTIR>=85&&dayTIR>=85) items.push({cls:'green',icon:'✓',text:`Overnight TIR ${onTIR}% · Daytime TIR ${dayTIR}%`,sub:'Both overnight and daytime TIR exceed the ATTD 85% aspirational threshold. ATTD 2023: consistent TIR across all periods is a marker of effective closed-loop performance.'});
-    else if(onTIR<dayTIR-15) items.push({cls:'amber',icon:'!',text:`Overnight TIR (${onTIR}%) lags daytime (${dayTIR}%)`,sub:'Overnight TIR is >15 percentage points below daytime. ATTD notes that nocturnal hypoglycemia carries elevated clinical risk due to impaired hypoglycemia awareness during sleep.'});
-    else if(dayTIR<onTIR-15) items.push({cls:'amber',icon:'!',text:`Daytime TIR (${dayTIR}%) lags overnight (${onTIR}%)`,sub:'Daytime TIR is >15 points below overnight. This pattern is consistent with postprandial glycemic excursions, a common contributor to reduced TIR in closed-loop T1D management.'});
+    if(onTIR>=85&&dayTIR>=85) items.push({key:'overnight',cls:'green',icon:'✓',text:`Overnight TIR ${onTIR}% · Daytime TIR ${dayTIR}%`,sub:'Both overnight and daytime TIR exceed the ATTD 85% aspirational threshold. ATTD 2023: consistent TIR across all periods is a marker of effective closed-loop performance.'});
+    else if(onTIR<dayTIR-15) items.push({key:'overnight',cls:'amber',icon:'!',text:`Overnight TIR (${onTIR}%) lags daytime (${dayTIR}%)`,sub:'Overnight TIR is >15 percentage points below daytime. ATTD notes that nocturnal hypoglycemia carries elevated clinical risk due to impaired hypoglycemia awareness during sleep.'});
+    else if(dayTIR<onTIR-15) items.push({key:'overnight',cls:'amber',icon:'!',text:`Daytime TIR (${dayTIR}%) lags overnight (${onTIR}%)`,sub:'Daytime TIR is >15 points below overnight. This pattern is consistent with postprandial glycemic excursions, a common contributor to reduced TIR in closed-loop T1D management.'});
   }
-  if(pBolus>60) items.push({cls:'amber',icon:'!',text:`Bolus-heavy split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Published AID system data (Breton et al., NEJM 2021) reports typical bolus:basal ratios of approximately 45–55% bolus. Higher bolus proportion may reflect frequent corrections or higher carbohydrate intake.'});
-  else if(pBasal>60) items.push({cls:'amber',icon:'!',text:`Basal-heavy split: ${pBasal}% basal / ${pBolus}% bolus`,sub:'Automated insulin delivery systems typically deliver 45–55% as bolus insulin. Higher automated basal proportion may reflect sustained hyperglycemia correction or lower meal-time insulin requirements.'});
-  else items.push({cls:'green',icon:'✓',text:`Balanced split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Bolus:basal ratio is within the typical range reported in closed-loop clinical trials (45–55% bolus). This pattern is consistent with balanced meal and correction dosing (Breton et al., NEJM 2021).'});
-  if(tddKg<=0.4) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — low-normal range`,sub:'Published T1D literature reports typical TDD of 0.4–0.7 u/kg/day. Values below 0.4 suggest high insulin sensitivity or lower carbohydrate intake relative to body weight.'});
-  else if(tddKg<=0.6) items.push({cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — typical range`,sub:'Within the typical T1D TDD range of 0.4–0.7 u/kg/day. TDD/kg is a useful longitudinal marker for tracking insulin requirement trends over time.'});
-  else if(tddKg<=0.7) items.push({cls:'amber',icon:'!',text:`TDD/kg ${tddKg} u/kg — upper typical range`,sub:'Approaching the upper end of the typical T1D TDD range (0.4–0.7 u/kg/day). Sustained upward trend may reflect changes in carbohydrate intake, activity level, or insulin sensitivity.'});
-  else items.push({cls:'red',icon:'!',text:`TDD/kg ${tddKg} u/kg — above typical range`,sub:'Above the typical T1D TDD range of 0.4–0.7 u/kg/day. Persistent elevation warrants monitoring alongside insulin resistance proxy markers (TG:HDL ratio, eGDR).'});
-  if(tddTrend>2) items.push({cls:'amber',icon:'!',text:`TDD trending up ~${Math.round(tddTrend*10)/10}u over period`,sub:'Total daily insulin has increased across this period. Potential contributors include higher carbohydrate intake, reduced physical activity, hormonal variation, or changes in insulin sensitivity.'});
-  else if(tddTrend<-2) items.push({cls:'green',icon:'✓',text:`TDD trending down ~${Math.round(Math.abs(tddTrend)*10)/10}u over period`,sub:'Total daily insulin has decreased across this period, consistent with improving insulin sensitivity, reduced carbohydrate intake, or increased physical activity.'});
+  if(pBolus>60) items.push({key:'split',cls:'amber',icon:'!',text:`Bolus-heavy split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Published AID system data (Breton et al., NEJM 2021) reports typical bolus:basal ratios of approximately 45–55% bolus. Higher bolus proportion may reflect frequent corrections or higher carbohydrate intake.'});
+  else if(pBasal>60) items.push({key:'split',cls:'amber',icon:'!',text:`Basal-heavy split: ${pBasal}% basal / ${pBolus}% bolus`,sub:'Automated insulin delivery systems typically deliver 45–55% as bolus insulin. Higher automated basal proportion may reflect sustained hyperglycemia correction or lower meal-time insulin requirements.'});
+  else items.push({key:'split',cls:'green',icon:'✓',text:`Balanced split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Bolus:basal ratio is within the typical range reported in closed-loop clinical trials (45–55% bolus). This pattern is consistent with balanced meal and correction dosing (Breton et al., NEJM 2021).'});
+  if(tddKg<=0.4) items.push({key:'tddKg',cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — low-normal range`,sub:'Published T1D literature reports typical TDD of 0.4–0.7 u/kg/day. Values below 0.4 suggest high insulin sensitivity or lower carbohydrate intake relative to body weight.'});
+  else if(tddKg<=0.6) items.push({key:'tddKg',cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — typical range`,sub:'Within the typical T1D TDD range of 0.4–0.7 u/kg/day. TDD/kg is a useful longitudinal marker for tracking insulin requirement trends over time.'});
+  else if(tddKg<=0.7) items.push({key:'tddKg',cls:'amber',icon:'!',text:`TDD/kg ${tddKg} u/kg — upper typical range`,sub:'Approaching the upper end of the typical T1D TDD range (0.4–0.7 u/kg/day). Sustained upward trend may reflect changes in carbohydrate intake, activity level, or insulin sensitivity.'});
+  else items.push({key:'tddKg',cls:'red',icon:'!',text:`TDD/kg ${tddKg} u/kg — above typical range`,sub:'Above the typical T1D TDD range of 0.4–0.7 u/kg/day. Persistent elevation warrants monitoring alongside insulin resistance proxy markers (TG:HDL ratio, eGDR).'});
+  if(tddTrend>2) items.push({key:'tddTrend',cls:'amber',icon:'!',text:`TDD trending up ~${Math.round(tddTrend*10)/10}u over period`,sub:'Total daily insulin has increased across this period. Potential contributors include higher carbohydrate intake, reduced physical activity, hormonal variation, or changes in insulin sensitivity.'});
+  else if(tddTrend<-2) items.push({key:'tddTrend',cls:'green',icon:'✓',text:`TDD trending down ~${Math.round(Math.abs(tddTrend)*10)/10}u over period`,sub:'Total daily insulin has decreased across this period, consistent with improving insulin sensitivity, reduced carbohydrate intake, or increased physical activity.'});
   const green=items.filter(i=>i.cls==='green').length;
   const amber=items.filter(i=>i.cls==='amber').length;
   const red=items.filter(i=>i.cls==='red').length;
-  document.getElementById('insights-summary').textContent=`${green} within target · ${amber} monitor · ${red} below target`;
-  document.getElementById('insights-body').innerHTML=items.map(i=>`
-    <div class="insight ${i.cls}">
-      <div class="insight-icon">${i.icon}</div>
-      <div><div class="insight-text">${i.text}</div><div class="insight-sub">${i.sub}</div></div>
-    </div>`).join('');
+  // Distribute insights to per-tile divs
+  function tileInsight(elId, itemKeys){
+    const el=document.getElementById(elId);
+    if(!el) return;
+    const relevant=items.filter(i=>itemKeys.includes(i.key));
+    if(!relevant.length){el.innerHTML='';return;}
+    el.innerHTML=relevant.map(i=>`
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);border-left:2px solid ${i.cls==='green'?'var(--accent)':i.cls==='amber'?'var(--amber)':'var(--red)'};background:${i.cls==='green'?'var(--accent-dim)':i.cls==='amber'?'var(--amber-dim)':'var(--red-dim)'};margin-top:4px">
+        <span style="font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;color:${i.cls==='green'?'var(--accent)':i.cls==='amber'?'var(--amber)':'var(--red)'}">${i.icon}</span>
+        <div><div style="font-size:12px;font-weight:600;color:var(--text)">${i.text}</div><div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.5">${i.sub}</div></div>
+      </div>`).join('');
+  }
+  tileInsight('insight-tir',['tir','lowL2','lowPct']);
+  tileInsight('insight-hourly',['highBlock','lowPattern','highPattern']);
+  tileInsight('insight-overnight',['overnight']);
+  tileInsight('insight-postmeal',[]);
+  tileInsight('insight-sensitivity',['tddKg','tddTrend','split']);
+  tileInsight('insight-dow',[]);
 }
 
 
@@ -1391,12 +1397,6 @@ function renderPostMealCurve(cgm,meals){
 
 // ── RATE OF CHANGE ─────────────────────────────────────────────────────────
 
-function toggleInsights(){
-  const body=document.getElementById('insights-body');
-  const chev=document.getElementById('insights-chevron');
-  body.classList.toggle('open');
-  chev.classList.toggle('open');
-}
 
 async function exportPDF(){
   const btn=document.getElementById('pdf-btn');
@@ -1405,10 +1405,7 @@ async function exportPDF(){
   btn.style.opacity='0.6';
   btn.style.pointerEvents='none';
 
-  const insightsBody=document.getElementById('insights-body');
-  const wasOpen=insightsBody.classList.contains('open');
-  if(!wasOpen) insightsBody.classList.add('open');
-
+  
   await new Promise(r=>setTimeout(r,400));
 
   try{
@@ -1427,8 +1424,7 @@ async function exportPDF(){
   }catch(e){
     alert('PDF export failed: '+e.message);
   }finally{
-    if(!wasOpen) insightsBody.classList.remove('open');
-    btn.textContent=orig;
+        btn.textContent=orig;
     btn.style.opacity='';
     btn.style.pointerEvents='';
   }
