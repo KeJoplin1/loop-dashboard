@@ -182,13 +182,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="metrics-wrap" id="metrics-wrap"></div>
 
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div class="card-title" style="margin-bottom:0">Glucose trace (mg/dL)</div>
-        <div style="display:flex;background:var(--surface2);border-radius:20px;padding:3px;gap:2px">
-          <button id="tir-toggle-std" onclick="setTIRMode('standard',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:var(--accent);color:#000">TIR 70–180</button>
-          <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:4px 12px;border-radius:16px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:none;color:var(--text3)">TITR 70–140</button>
-        </div>
-      </div>
+      <div class="card-title">Glucose trace (mg/dL)</div>
       <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
@@ -215,10 +209,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
       <div class="card">
         <div class="card-title">Average glucose by 3-hour block</div>
-        <div id="insight-hourly" style="margin-bottom:10px"></div>
         <div style="position:relative;width:100%;height:220px">
           <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
         </div>
+        <div id="insight-hourly" style="margin-top:8px"></div>
       </div>
     </div>
 
@@ -264,12 +258,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="card">
       <div class="card-title purple">Daily TDD — bolus (blue) + basal (purple)</div>
-      <div style="display:flex;gap:12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
+        <div id="tdd-split-stats" style="font-size:12px;color:var(--text3)"></div>
       </div>
       <div style="position:relative;width:100%;height:220px">
         <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
       </div>
+      <div id="insight-tdd" style="margin-top:10px"></div>
     </div>
 
     <div class="card">
@@ -508,6 +504,7 @@ function renderAll(){
   renderTIR(filteredCGM);
   renderHourlyAvg(filteredCGM);
   renderTDDChart(filteredBoluses,filteredBasals);
+  renderTDDStats(filteredBoluses,filteredBasals);
   renderHourlyLows(filteredCGM);
   renderHourlyHighs(filteredCGM);
   renderOvernightVsDaytime(filteredCGM);
@@ -555,7 +552,13 @@ function renderMetrics(cgm,boluses,basals){
   const a1cCls=ea1c<6.5?'good':ea1c<7?'warn':'bad';
   document.getElementById('metrics-wrap').innerHTML=`
     <div class="metrics-section" style="flex:3">
-      <div class="metrics-section-label gluc">Glucose</div>
+      <div class="metrics-section-label gluc" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Glucose</span>
+        <span style="display:flex;background:rgba(0,0,0,0.25);border-radius:14px;padding:2px;gap:2px">
+          <button id="tir-toggle-std" onclick="setTIRMode('standard',this)" style="padding:3px 10px;border-radius:12px;border:none;font-size:10px;font-weight:700;cursor:pointer;background:var(--accent);color:#000;line-height:1.3">TIR</button>
+          <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:3px 10px;border-radius:12px;border:none;font-size:10px;font-weight:700;cursor:pointer;background:none;color:rgba(0,212,160,0.5);line-height:1.3">TITR</button>
+        </span>
+      </div>
       <div class="metrics-row">
         <div class="metric-cell"><div class="metric-label">Avg BG</div><div class="metric-val">${avg}<span class="unit"> mg/dL</span></div></div>
         <div class="metric-cell"><div class="metric-label">GMI</div><div class="metric-val ${gmiCls}">${gmi}<span class="unit">%</span></div></div>
@@ -905,6 +908,18 @@ function renderHourlyAvg(cgm){
   });
 }
 
+function renderTDDStats(boluses,basals){
+  const el=document.getElementById('tdd-split-stats');
+  if(!el) return;
+  const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
+  const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
+  const total=totalBolus+totalBasal;
+  if(!total){el.innerHTML='';return;}
+  const pBolus=Math.round(totalBolus/total*100);
+  const pBasal=100-pBolus;
+  el.innerHTML=`<span style="color:var(--blue);font-weight:700">${pBolus}% bolus</span> <span style="color:var(--text3)">/</span> <span style="color:var(--purple);font-weight:700">${pBasal}% basal</span>`;
+}
+
 function renderTDDChart(boluses,basals){
   if(tddChart) tddChart.destroy();
   const days={};
@@ -1035,36 +1050,29 @@ function renderOvernightVsDaytime(cgm){
   if(!canvas||!cgm.length) return;
   const HIGH_TIR=tirMode==='tight'?140:HIGH;
 
-  // Build avg glucose by hour — all 24 hours, but color overnight vs daytime differently
+  // Reorder hours to start at 10pm so overnight is contiguous on the left
+  // Display order: 22,23,0,1,2,3,4,5,6,7,...,21
   const hourBuckets=Array.from({length:24},()=>[]);
   cgm.forEach(d=>hourBuckets[d.t.getHours()].push(d.v));
   const hourAvg=hourBuckets.map(b=>b.length?Math.round(b.reduce((a,v)=>a+v,0)/b.length):null);
 
-  // Overnight hours: 22,23,0,1,2,3,4,5 — daytime: 6-21
-  // Reorder to start at midnight: 0-23
-  const labels=['12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p','11p'];
+  const hourOrder=[22,23,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21];
+  const labels=['10p','11p','12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p'];
   const isOvernight=h=>h>=22||h<6;
 
-  // Split into two datasets so they render different colors
-  const overnightData=hourAvg.map((v,h)=>isOvernight(h)?v:null);
-  const daytimeData=hourAvg.map((v,h)=>!isOvernight(h)?v:null);
-
-  // Connecting points: copy adjacent values so lines connect at transition hours
-  // At h=6: daytime starts — copy overnight[5] into daytime[5] for visual continuity
-  // At h=22: overnight starts — copy daytime[21] into overnight[22]
-  const overnightConn=[...overnightData];
-  const daytimeConn=[...daytimeData];
-  if(hourAvg[5]!=null) daytimeConn[5]=hourAvg[5];   // bridge at 6am
-  if(hourAvg[6]!=null) overnightConn[6]=hourAvg[6]; // bridge at 6am other side
-  if(hourAvg[21]!=null) overnightConn[21]=hourAvg[21]; // bridge at 10pm
-  if(hourAvg[22]!=null) daytimeConn[22]=hourAvg[22];
+  // Reordered data arrays
+  const reorderedAvg=hourOrder.map(h=>hourAvg[h]);
+  // Split into overnight (indices 0-7: 10pm-5am) and daytime (indices 8-23: 6am-9pm)
+  // with bridge points at transitions (idx 7→8 and idx 23 wrap)
+  const overnightConn=reorderedAvg.map((v,i)=>i<=7?v:(i===8?reorderedAvg[7]:null));
+  const daytimeConn=reorderedAvg.map((v,i)=>i>=8?v:(i===7?reorderedAvg[8]:null));
 
   const grid='rgba(255,255,255,0.05)';
   window.overnightChart=new Chart(canvas,{
     type:'line',
     data:{labels,datasets:[
-      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:overnightConn.map((v,h)=>v!=null&&isOvernight(h)?3:0),pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
-      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:daytimeConn.map((v,h)=>v!=null&&!isOvernight(h)?3:0),pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
+      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:overnightConn.map((v,i)=>v!=null&&i<=8?3:0),pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
+      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:daytimeConn.map((v,i)=>v!=null&&i>=7?3:0),pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
       {label:'Upper',data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
       {label:'Lower',data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
     ]},
@@ -1151,6 +1159,46 @@ function renderDayOfWeek(cgm,boluses,basals){
     return`rgba(${r},${g},60,0.85)`;
   }
 
+  // If only one day (single-day view), show expanded card layout
+  if(rows.length===1){
+    const r=rows[0];
+    const tirCls=r.tir>=85?'#00d4a0':r.tir>=70?'#ffb347':'#ff4d6d';
+    const avgCls=r.avg<=110?'#00d4a0':r.avg<=140?'var(--text)':'#ffb347';
+    const cvCls=r.cv<=25?'#00d4a0':r.cv<=36?'#ffb347':'#ff4d6d';
+    document.getElementById('dow-display').innerHTML=`
+      <div style="text-align:center;margin-bottom:14px">
+        <div style="font-size:18px;font-weight:700;color:var(--text)">${r.name}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${r.numDays} day in range</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">TIR</div>
+          <div style="font-size:32px;font-weight:700;color:${tirCls};letter-spacing:-1px">${r.tir}<span style="font-size:16px">%</span></div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Avg BG</div>
+          <div style="font-size:32px;font-weight:700;color:${avgCls};letter-spacing:-1px">${r.avg}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">CV</div>
+          <div style="font-size:32px;font-weight:700;color:${cvCls};letter-spacing:-1px">${r.cv}<span style="font-size:16px">%</span></div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Low</div>
+          <div style="font-size:32px;font-weight:700;color:${r.low>=4?'#ff4d6d':r.low>=2?'#ffb347':'#00d4a0'};letter-spacing:-1px">${r.low}<span style="font-size:16px">%</span></div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">High</div>
+          <div style="font-size:32px;font-weight:700;color:${r.high>=25?'#ff4d6d':r.high>=10?'#ffb347':'#00d4a0'};letter-spacing:-1px">${r.high}<span style="font-size:16px">%</span></div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">TDD</div>
+          <div style="font-size:32px;font-weight:700;color:var(--text);letter-spacing:-1px">${r.tdd}<span style="font-size:14px;color:var(--text3)">u</span></div>
+        </div>
+      </div>`;
+    return;
+  }
+
   // Table layout: days as columns, metrics as rows
   const metrics=[
     {key:'tir',label:'TIR',fmt:v=>v+'%',color:v=>v>=85?'#00d4a0':v>=70?'#ffb347':'#ff4d6d'},
@@ -1197,13 +1245,13 @@ function renderSensitivityChart(boluses,basals){
   boluses.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].bolus+=b.units;});
   basals.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].basal+=b.delivered;});
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
-  const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*100)/100);
+  const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*1000)/1000);
   // Single day: show big centered number instead of a flat line chart
   if(labels.length<=1&&wrap){
     const val=tddKgData[0]||0;
     const valCls=val<=0.4?'#00d4a0':val<=0.6?'#ffb347':'#ff4d6d';
     wrap.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px">
-      <div style="font-size:52px;font-weight:700;color:${valCls};letter-spacing:-2px">${val}</div>
+      <div style="font-size:52px;font-weight:700;color:${valCls};letter-spacing:-2px">${val.toFixed(2)}</div>
       <div style="font-size:13px;color:var(--text3)">u/kg today</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Select a wider range to see the trend</div>
     </div>`;
@@ -1314,7 +1362,8 @@ function renderInsights(cgm,boluses,basals){
   tileInsight('insight-hourly',['highBlock','lowPattern','highPattern']);
   tileInsight('insight-overnight',['overnight']);
   tileInsight('insight-postmeal',[]);
-  tileInsight('insight-sensitivity',['tddKg','tddTrend','split']);
+  tileInsight('insight-tdd',['split']);
+  tileInsight('insight-sensitivity',['tddKg','tddTrend']);
   tileInsight('insight-dow',[]);
 }
 
