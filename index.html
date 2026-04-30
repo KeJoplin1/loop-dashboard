@@ -222,12 +222,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div style="position:relative;width:100%;height:180px">
           <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
         </div>
+        <div id="insight-low-block" style="margin-top:8px"></div>
       </div>
       <div class="card">
         <div id="high-block-title" class="card-title">High events by 3-hour block (&gt;180)</div>
         <div style="position:relative;width:100%;height:180px">
           <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
         </div>
+        <div id="insight-high-block" style="margin-top:8px"></div>
       </div>
     </div>
 
@@ -474,9 +476,10 @@ function setTIRMode(mode,btn){
   const highTitle=document.getElementById('high-block-title');
   if(highTitle) highTitle.textContent=tirMode==='tight'?'High events by 3-hour block (>140)':'High events by 3-hour block (>180)';
   document.querySelectorAll('#tir-toggle-std,#tir-toggle-tight').forEach(b=>{
-    b.style.background='none';b.style.color='var(--text3)';
+    b.style.background='none';b.style.color='rgba(0,212,160,0.5)';
+    b.style.fontWeight='700';
   });
-  btn.style.background='var(--accent)';btn.style.color='#000';
+  btn.style.background='var(--accent)';btn.style.color='#000';btn.style.fontWeight='700';
   renderAll();
 }
 
@@ -596,16 +599,31 @@ function renderTraceStats(boluses,meals){
   const bolusPerDay=(visBoluses.length/nDays).toFixed(1);
   const mealsPerDay=meals&&meals.length?(meals.length/nDays).toFixed(1):'—';
   const avgBolus=visBoluses.length?Math.round(visBoluses.reduce((s,b)=>s+b.units,0)/visBoluses.length*10)/10:0;
+
+  // Correction boluses: boluses ≥0.5u that do NOT fall within ±2h of any meal
+  const MEAL_WINDOW=2*60*60*1000; // 2 hours in ms
+  const correctionBoluses=visBoluses.filter(b=>{
+    if(!meals||!meals.length) return true; // no meal data — all are corrections
+    return !meals.some(m=>Math.abs(b.t.getTime()-m.t.getTime())<=MEAL_WINDOW);
+  });
+  const correctionsPerDay=(correctionBoluses.length/nDays).toFixed(1);
+
+  const statStyle='display:flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface2);border-radius:8px';
   el.innerHTML=`
-    <div style="display:flex;align-items:center;gap:6px">
+    <div style="${statStyle}">
       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Boluses/day</span>
       <span style="font-size:16px;font-weight:700;color:#4d9fff">${bolusPerDay}</span>
       <span style="font-size:10px;color:var(--text3)">avg ${avgBolus}u</span>
     </div>
-    ${meals&&meals.length?`<div style="display:flex;align-items:center;gap:6px">
+    ${meals&&meals.length?`<div style="${statStyle}">
       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Meals/day</span>
       <span style="font-size:16px;font-weight:700;color:#f472b6">${mealsPerDay}</span>
     </div>`:''}
+    <div style="${statStyle}">
+      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Corrections/day</span>
+      <span style="font-size:16px;font-weight:700;color:#818cf8">${correctionsPerDay}</span>
+      <span style="font-size:10px;color:var(--text3)">outside ±2h meal</span>
+    </div>
   `;
 }
 
@@ -922,6 +940,7 @@ function renderTDDStats(boluses,basals){
 
 function renderTDDChart(boluses,basals){
   if(tddChart) tddChart.destroy();
+  const tddWrap=document.querySelector('#tddChart')?.parentElement;
   const days={};
   boluses.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].bolus+=b.units;});
   basals.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].basal+=b.delivered;});
@@ -929,6 +948,36 @@ function renderTDDChart(boluses,basals){
   const bolusData=labels.map(k=>Math.round(days[k].bolus*10)/10);
   const basalData=labels.map(k=>Math.round(days[k].basal*10)/10);
   const totalData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)*10)/10);
+
+  // Single day: show centered numbers instead of a single-bar chart
+  if(labels.length<=1&&tddWrap){
+    const tdd=totalData[0]||0;
+    const bolus=bolusData[0]||0;
+    const basal=basalData[0]||0;
+    const pBolus=tdd>0?Math.round(bolus/tdd*100):0;
+    const pBasal=100-pBolus;
+    tddWrap.innerHTML=`<div style="display:flex;justify-content:space-around;align-items:center;height:100%;flex-wrap:wrap;gap:8px;padding:8px 0">
+      <div style="text-align:center">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total TDD</div>
+        <div style="font-size:52px;font-weight:700;color:var(--text);letter-spacing:-2px">${tdd}<span style="font-size:16px;color:var(--text3)">u</span></div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Bolus</div>
+        <div style="font-size:36px;font-weight:700;color:#4d9fff;letter-spacing:-1px">${bolus}<span style="font-size:13px;color:var(--text3)">u</span></div>
+        <div style="font-size:11px;color:#4d9fff;margin-top:2px">${pBolus}%</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Basal</div>
+        <div style="font-size:36px;font-weight:700;color:var(--purple);letter-spacing:-1px">${basal}<span style="font-size:13px;color:var(--text3)">u</span></div>
+        <div style="font-size:11px;color:var(--purple);margin-top:2px">${pBasal}%</div>
+      </div>
+    </div>`;
+    return;
+  }
+  // Restore canvas if switching back
+  if(tddWrap&&!tddWrap.querySelector('canvas')){
+    tddWrap.innerHTML='<canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>';
+  }
   const showTrend=document.getElementById('show-trend')?.checked;
   const grid='rgba(255,255,255,0.05)';
   const lc='rgba(240,240,240,0.85)';
@@ -1064,15 +1113,15 @@ function renderOvernightVsDaytime(cgm){
   const reorderedAvg=hourOrder.map(h=>hourAvg[h]);
   // Split into overnight (indices 0-7: 10pm-5am) and daytime (indices 8-23: 6am-9pm)
   // with bridge points at transitions (idx 7→8 and idx 23 wrap)
-  const overnightConn=reorderedAvg.map((v,i)=>i<=7?v:(i===8?reorderedAvg[7]:null));
-  const daytimeConn=reorderedAvg.map((v,i)=>i>=8?v:(i===7?reorderedAvg[8]:null));
+  const overnightConn=reorderedAvg.map((v,i)=>i<=8?v:null);  // indices 0-8: 10pm to 6am
+  const daytimeConn=reorderedAvg.map((v,i)=>i>=8?v:null);     // indices 8-23: 6am to 9pm
 
   const grid='rgba(255,255,255,0.05)';
   window.overnightChart=new Chart(canvas,{
     type:'line',
     data:{labels,datasets:[
-      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:overnightConn.map((v,i)=>v!=null&&i<=8?3:0),pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
-      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:daytimeConn.map((v,i)=>v!=null&&i>=7?3:0),pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
+      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:overnightConn.map((v,i)=>v!=null&&i<8?3:0),pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
+      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:daytimeConn.map((v,i)=>v!=null&&i>8?3:0),pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
       {label:'Upper',data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
       {label:'Lower',data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
     ]},
@@ -1359,7 +1408,9 @@ function renderInsights(cgm,boluses,basals){
       </div>`).join('');
   }
   tileInsight('insight-tir',['tir','lowL2','lowPct']);
-  tileInsight('insight-hourly',['highBlock','lowPattern','highPattern']);
+  tileInsight('insight-hourly',['highBlock']);
+  tileInsight('insight-low-block',['lowL2','lowPct','lowPattern']);
+  tileInsight('insight-high-block',['highPattern']);
   tileInsight('insight-overnight',['overnight']);
   tileInsight('insight-postmeal',[]);
   tileInsight('insight-tdd',['split']);
