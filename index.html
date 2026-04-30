@@ -475,11 +475,7 @@ function setTIRMode(mode,btn){
   document.getElementById('tir-card-title').textContent=title;
   const highTitle=document.getElementById('high-block-title');
   if(highTitle) highTitle.textContent=tirMode==='tight'?'High events by 3-hour block (>140)':'High events by 3-hour block (>180)';
-  document.querySelectorAll('#tir-toggle-std,#tir-toggle-tight').forEach(b=>{
-    b.style.background='none';b.style.color='rgba(0,212,160,0.5)';
-    b.style.fontWeight='700';
-  });
-  btn.style.background='var(--accent)';btn.style.color='#000';btn.style.fontWeight='700';
+  // toggle state is rendered by renderMetrics based on tirMode
   renderAll();
 }
 
@@ -558,8 +554,8 @@ function renderMetrics(cgm,boluses,basals){
       <div class="metrics-section-label gluc" style="display:flex;align-items:center;justify-content:space-between">
         <span>Glucose</span>
         <span style="display:flex;background:rgba(0,0,0,0.25);border-radius:14px;padding:2px;gap:2px">
-          <button id="tir-toggle-std" onclick="setTIRMode('standard',this)" style="padding:3px 10px;border-radius:12px;border:none;font-size:10px;font-weight:700;cursor:pointer;background:var(--accent);color:#000;line-height:1.3">TIR</button>
-          <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:3px 10px;border-radius:12px;border:none;font-size:10px;font-weight:700;cursor:pointer;background:none;color:rgba(0,212,160,0.5);line-height:1.3">TITR</button>
+          <button id="tir-toggle-std" onclick="setTIRMode('standard',this)" style="padding:3px 10px;border-radius:12px;border:none;font-size:10px;font-weight:700;cursor:pointer;line-height:1.3;${tirMode==='standard'?'background:var(--accent);color:#000':'background:none;color:rgba(0,212,160,0.4)'}">TIR</button>
+          <button id="tir-toggle-tight" onclick="setTIRMode('tight',this)" style="padding:3px 10px;border-radius:12px;border:none;font-size:10px;font-weight:700;cursor:pointer;line-height:1.3;${tirMode==='tight'?'background:var(--accent);color:#000':'background:none;color:rgba(0,212,160,0.4)'}">TITR</button>
         </span>
       </div>
       <div class="metrics-row">
@@ -584,7 +580,7 @@ function renderMetrics(cgm,boluses,basals){
       <div class="metrics-row">
         <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
         <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:var(--blue)">${pBolus}%</span><span class="unit"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
+        ${currentDays>1?`<div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:var(--blue)">${pBolus}%</span><span class="unit"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>`:''}
       </div>
     </div>
   `;
@@ -621,7 +617,7 @@ function renderTraceStats(boluses,meals){
     </div>`:''}
     <div style="${statStyle}">
       <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Corrections/day</span>
-      <span style="font-size:16px;font-weight:700;color:#818cf8">${correctionsPerDay}</span>
+      <span style="font-size:16px;font-weight:700;color:#f59e0b">${correctionsPerDay}</span>
       <span style="font-size:10px;color:var(--text3)">outside ±2h meal</span>
     </div>
   `;
@@ -956,20 +952,20 @@ function renderTDDChart(boluses,basals){
     const basal=basalData[0]||0;
     const pBolus=tdd>0?Math.round(bolus/tdd*100):0;
     const pBasal=100-pBolus;
-    tddWrap.innerHTML=`<div style="display:flex;justify-content:space-around;align-items:center;height:100%;flex-wrap:wrap;gap:8px;padding:8px 0">
+    tddWrap.innerHTML=`<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:100%;padding:8px 0;gap:4px">
       <div style="text-align:center">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total TDD</div>
-        <div style="font-size:52px;font-weight:700;color:var(--text);letter-spacing:-2px">${tdd}<span style="font-size:16px;color:var(--text3)">u</span></div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Bolus</div>
+        <div style="font-size:48px;font-weight:700;color:#4d9fff;letter-spacing:-2px">${bolus}<span style="font-size:16px;color:var(--text3)">u</span></div>
+        <div style="font-size:13px;color:#4d9fff;margin-top:3px">${pBolus}%</div>
+      </div>
+      <div style="text-align:center;padding:0 16px;border-left:1px solid var(--border);border-right:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total TDD</div>
+        <div style="font-size:58px;font-weight:700;color:var(--text);letter-spacing:-2px">${tdd}<span style="font-size:18px;color:var(--text3)">u</span></div>
       </div>
       <div style="text-align:center">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Bolus</div>
-        <div style="font-size:36px;font-weight:700;color:#4d9fff;letter-spacing:-1px">${bolus}<span style="font-size:13px;color:var(--text3)">u</span></div>
-        <div style="font-size:11px;color:#4d9fff;margin-top:2px">${pBolus}%</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Basal</div>
-        <div style="font-size:36px;font-weight:700;color:var(--purple);letter-spacing:-1px">${basal}<span style="font-size:13px;color:var(--text3)">u</span></div>
-        <div style="font-size:11px;color:var(--purple);margin-top:2px">${pBasal}%</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Basal</div>
+        <div style="font-size:48px;font-weight:700;color:var(--purple);letter-spacing:-2px">${basal}<span style="font-size:16px;color:var(--text3)">u</span></div>
+        <div style="font-size:13px;color:var(--purple);margin-top:3px">${pBasal}%</div>
       </div>
     </div>`;
     return;
