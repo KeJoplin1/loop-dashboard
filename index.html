@@ -208,30 +208,34 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="insight-tir" style="margin-top:10px"></div>
       </div>
       <div class="card">
-        <div class="card-title">Average glucose by 3-hour block</div>
-        <div style="position:relative;width:100%;height:220px">
+        <div class="card-title">Glucose &amp; events by 3-hour block</div>
+        <!-- Avg glucose -->
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Avg glucose (mg/dL)</div>
+        <div style="position:relative;width:100%;height:160px">
           <canvas id="hourlyAvgChart" role="img" aria-label="Avg glucose by block"></canvas>
         </div>
+        <!-- Low + High events side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+          <div>
+            <div style="font-size:10px;color:#ff4d6d;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Lows &lt;70 mg/dL</div>
+            <div style="position:relative;width:100%;height:120px">
+              <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
+            </div>
+          </div>
+          <div>
+            <div id="high-block-label" style="font-size:10px;color:#ffb347;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Highs &gt;180 mg/dL</div>
+            <div style="position:relative;width:100%;height:120px">
+              <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
+            </div>
+          </div>
+        </div>
         <div id="insight-hourly" style="margin-top:8px"></div>
+        <div id="insight-low-block" style="margin-top:4px"></div>
+        <div id="insight-high-block" style="margin-top:4px"></div>
       </div>
     </div>
 
-    <div class="two-col">
-      <div class="card">
-        <div class="card-title">Low events by 3-hour block (&lt;70)</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyLowChart" role="img" aria-label="Low events by block"></canvas>
-        </div>
-        <div id="insight-low-block" style="margin-top:8px"></div>
-      </div>
-      <div class="card">
-        <div id="high-block-title" class="card-title">High events by 3-hour block (&gt;180)</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="hourlyHighChart" role="img" aria-label="High events by block"></canvas>
-        </div>
-        <div id="insight-high-block" style="margin-top:8px"></div>
-      </div>
-    </div>
+
 
     <div class="two-col">
       <div class="card">
@@ -473,8 +477,8 @@ function setTIRMode(mode,btn){
   const HIGH_TIR=tirMode==='tight'?140:150;
   const title=tirMode==='tight'?'Time in tight range (TITR 70–140 mg/dL)':'Time in range (TIR 70–180 mg/dL)';
   document.getElementById('tir-card-title').textContent=title;
-  const highTitle=document.getElementById('high-block-title');
-  if(highTitle) highTitle.textContent=tirMode==='tight'?'High events by 3-hour block (>140)':'High events by 3-hour block (>180)';
+  const highLabel=document.getElementById('high-block-label');
+  if(highLabel) highLabel.textContent=tirMode==='tight'?'HIGHS >140 MG/DL':'HIGHS >180 MG/DL';
   // toggle state is rendered by renderMetrics based on tirMode
   renderAll();
 }
@@ -916,9 +920,9 @@ function renderHourlyAvg(cgm){
     type:'bar',data:{labels:blkLabels,datasets:[{data:avgs,backgroundColor:colors,borderRadius:5}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':'No data'}},
-        datalabels:{anchor:'end',align:'end',color:lc,font:{size:12,weight:'700'},formatter:v=>v||''}},
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v||''}},
       scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{min:60,max:180,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}},
-      layout:{padding:{top:28}}}
+      layout:{padding:{top:22}}}
   });
 }
 
@@ -1039,9 +1043,9 @@ function renderHourlyLows(cgm){
     type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' readings <70 in block'}},
-        datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
-      scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:10},precision:0},grid:{color:grid}}},
-      layout:{padding:{top:24}}}
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
+      scales:{x:{ticks:{color:'#505058',font:{size:9},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:9},precision:0},grid:{color:grid}}},
+      layout:{padding:{top:16}}}
   });
 }
 
@@ -1065,9 +1069,9 @@ function renderHourlyHighs(cgm){
     type:'bar',data:{labels:blkLabels,datasets:[{data:blocks,backgroundColor:colors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+(tirMode==='tight'?' readings >140 in block':' readings >180 in block')}},
-        datalabels:{anchor:'end',align:'end',color:lc,font:{size:11,weight:'700'},formatter:v=>v>0?v:''}},
-      scales:{x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:10},precision:0},grid:{color:grid}}},
-      layout:{padding:{top:24}}}
+        datalabels:{anchor:'end',align:'end',color:lc,font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
+      scales:{x:{ticks:{color:'#505058',font:{size:9},maxRotation:0},grid:{display:false}},y:{ticks:{color:'#505058',font:{size:9},precision:0},grid:{color:grid}}},
+      layout:{padding:{top:16}}}
   });
 }
 
@@ -1461,15 +1465,50 @@ function renderPostMealCurve(cgm,meals){
   const returnMin=returnIdx!==null&&returnIdx>=0?labels[peakIdx+returnIdx]:null;
   const grid='rgba(255,255,255,0.05)';
   const labelData=labels.map(m=>m===0?'Meal':(m>0?'+'+m+'m':m+'m'));
+  // Find index of x=0 (meal time label)
+  const mealIdx=labelData.indexOf('Meal');
+  const HIGH_TIR_PM=tirMode==='tight'?140:HIGH;
+
+  // Meal marker vertical line plugin
+  const mealLinePlugin={
+    id:'mealLine',
+    afterDraw(chart){
+      if(mealIdx<0) return;
+      const{ctx,chartArea:{top,bottom},scales:{x}}=chart;
+      const xPos=x.getPixelForValue(mealIdx);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(xPos,top);ctx.lineTo(xPos,bottom);
+      ctx.strokeStyle='rgba(244,114,182,0.6)';
+      ctx.lineWidth=1.5;
+      ctx.setLineDash([4,3]);
+      ctx.stroke();
+      // Pill label at top
+      ctx.font='bold 9px -apple-system,sans-serif';
+      ctx.fillStyle='#f472b6';
+      ctx.textAlign='center';
+      ctx.fillText('MEAL',xPos,top+10);
+      ctx.restore();
+    }
+  };
+
   postmealCurveChart=new Chart(canvas,{
     type:'line',
     data:{labels:labelData,datasets:[
-      {data:avgCurve,borderColor:'#f472b6',borderWidth:2,pointRadius:0,tension:0.3,fill:false,datalabels:{display:false}},
-      {data:labels.map(()=>baseline),borderColor:'rgba(255,255,255,0.15)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
+      {data:avgCurve,borderColor:'#f472b6',borderWidth:2,
+       pointRadius:avgCurve.map((_,i)=>i===peakIdx?5:0),
+       pointBackgroundColor:'#f472b6',
+       tension:0.3,fill:false,datalabels:{display:false}},
+      {data:labels.map(()=>baseline),borderColor:'rgba(255,255,255,0.12)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
+      {data:labels.map(()=>HIGH_TIR_PM),borderColor:'rgba(255,179,71,0.2)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
     ]},
+    plugins:[mealLinePlugin],
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},datalabels:{display:false},
-        tooltip:{callbacks:{label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':''}}},
+        tooltip:{callbacks:{
+          title:ctx=>ctx[0].label==='Meal'?'Meal time':ctx[0].label,
+          label:ctx=>ctx.datasetIndex===0&&ctx.parsed.y?ctx.parsed.y+' mg/dL':''
+        }}},
       scales:{
         x:{ticks:{color:'#505058',font:{size:9},maxTicksLimit:12},grid:{color:grid}},
         y:{ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
