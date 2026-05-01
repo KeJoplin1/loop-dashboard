@@ -828,6 +828,14 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
 
   const svgNS='http://www.w3.org/2000/svg';
 
+  // Match SVG coordinate space to container pixel dimensions
+  const containerEl=document.getElementById('chart-container');
+  const containerW=containerEl?containerEl.clientWidth:1000;
+  const containerH=containerEl?containerEl.clientHeight:440;
+  // Set viewBox so 1 SVG unit = 1 CSS pixel
+  overlay.setAttribute('viewBox',`0 0 ${containerW} ${containerH}`);
+  overlay.setAttribute('preserveAspectRatio','none');
+
   // ── COORDINATE SYSTEM ────────────────────────────────────────────
   // Container is 400px. Canvas 240px (top). SVG spans full 400px.
   // We compress the x-axis tick area and push insulin lane below it.
@@ -908,14 +916,13 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     const autoBoluses=boluses?boluses.filter(b=>b.units<AUTO_THRESHOLD):[];
     const manualBoluses=boluses?boluses.filter(b=>b.units>=AUTO_THRESHOLD):[];
 
-    // Shared scale: max delivered units across basal segments and auto boluses
-    const maxDelivered=Math.max(
-      ...basalsSorted.map(b=>b.delivered||0),
-      ...autoBoluses.map(b=>b.units),
-      0.05
-    );
+    // Basal uses RATE (u/hr) — gives meaningful continuous shape
+    const maxRate=Math.max(...basalsSorted.map(b=>b.rate||0),0.1);
+    // Auto bolus uses units — separate scale so they're visible against basal
+    const maxAuto=Math.max(...autoBoluses.map(b=>b.units),0.05);
+    // Manual bolus separate scale
     const maxManual=Math.max(...manualBoluses.map(b=>b.units),1);
-    const USABLE_H=INS_H*0.88; // leave headroom at top
+    const USABLE_H=INS_H*0.85; // usable lane height
 
     // Lane background
     const laneBg=document.createElementNS(svgNS,'rect');
@@ -934,10 +941,10 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
           ? Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right)
           : chartArea.right;
         if(x2<=x1) continue;
-        const delivered=b.delivered||0;
-        if(delivered<=0) continue;
-        // h = pixels upward from INS_BOT
-        const h=Math.max(1,(delivered/maxDelivered)*USABLE_H);
+        const rate=b.rate||0;
+        if(rate<=0) continue;
+        // h = pixels upward from INS_BOT, based on rate
+        const h=Math.max(2,(rate/maxRate)*USABLE_H*0.6); // basal uses 60% of lane
         const rect=document.createElementNS(svgNS,'rect');
         rect.setAttribute('x',x1);
         rect.setAttribute('y',INS_BOT-h);   // top of bar = INS_BOT minus height
@@ -955,7 +962,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
           ? Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right)
           : chartArea.right;
         if(x2<=x1) return;
-        const h=Math.max(1,(( b.delivered||0)/maxDelivered)*USABLE_H);
+        const h=Math.max(2,((b.rate||0)/maxRate)*USABLE_H*0.6);
         const y=INS_BOT-h;
         d+=`M ${x1} ${y} L ${x2} ${y} `;
       });
@@ -971,11 +978,11 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     autoBoluses.forEach(b=>{
       const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
       const x=xOf(bT);
-      const h=Math.max(3,Math.round((b.units/maxDelivered)*USABLE_H));
+      const h=Math.max(3,Math.round((b.units/maxAuto)*USABLE_H*0.75));
       const bar=document.createElementNS(svgNS,'rect');
       bar.setAttribute('x',x-2);bar.setAttribute('y',INS_BOT-h);
       bar.setAttribute('width',4);bar.setAttribute('height',h);
-      bar.setAttribute('fill','rgba(0,212,160,0.70)');bar.setAttribute('rx','1');
+      bar.setAttribute('fill','rgba(0,212,160,0.75)');bar.setAttribute('rx','1');
       overlay.appendChild(bar);
     });
 
@@ -1004,7 +1011,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       }
 
       // Blue bar growing up from INS_BOT — scaled relative to manual max
-      const barH=Math.max(12,Math.round((units/maxManual)*USABLE_H));
+      const barH=Math.max(16,Math.round((units/maxManual)*USABLE_H*0.9));
       const bar=document.createElementNS(svgNS,'rect');
       bar.setAttribute('x',x-4);bar.setAttribute('y',INS_BOT-barH);
       bar.setAttribute('width',8);bar.setAttribute('height',barH);
