@@ -309,7 +309,10 @@ function dayKey(t){return fmtDate(t);}
 async function loadFromOneDrive(){
   showLoading();
   try{
-    const r=await fetch(ONEDRIVE_URL);
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),5000); // 5s timeout
+    const r=await fetch(ONEDRIVE_URL,{signal:controller.signal});
+    clearTimeout(timeout);
     if(!r.ok) throw new Error('failed');
     parseAndRender(await r.text());
   }catch(e){
@@ -403,7 +406,12 @@ function parseAndRender(csvText){
   updateDayNavLabel();
   document.getElementById('loading-state').style.display='none';
   document.getElementById('dashboard').style.display='block';
-  renderAll();
+  try{
+    renderAll();
+  }catch(err){
+    showError('Error rendering dashboard: '+err.message+' — check browser console (F12) for details.');
+    console.error('renderAll error:', err);
+  }
 }
 
 let customFrom=null,customTo=null;
@@ -504,22 +512,23 @@ function renderAll(){
   document.getElementById('error-box').style.display='none';
   const minT=filteredCGM[0].t,maxT=filteredCGM[filteredCGM.length-1].t;
   document.getElementById('data-range').textContent=fmtDate(minT)+' — '+fmtDate(maxT)+' · '+filteredCGM.length+' readings';
-  renderMetrics(filteredCGM,filteredBoluses,filteredBasals);
-  renderGlucoseChart(filteredCGM);
+  const safe=(fn,name)=>{try{fn();}catch(e){console.error(name+' failed:',e);}};
+  safe(()=>renderMetrics(filteredCGM,filteredBoluses,filteredBasals),'renderMetrics');
+  safe(()=>renderGlucoseChart(filteredCGM),'renderGlucoseChart');
   const ilw=document.getElementById('insulin-lane-wrap');
-  if(currentDays<=7){if(ilw)ilw.style.display='block';renderInsulinLanes(filteredBoluses,filteredBasals,filteredCGM);}else{if(ilw)ilw.style.display='none';}
-  renderTIR(filteredCGM);
-  renderHourlyAvg(filteredCGM);
-  renderTDDChart(filteredBoluses,filteredBasals);
-  renderTDDStats(filteredBoluses,filteredBasals);
-  renderHourlyLows(filteredCGM);
-  renderHourlyHighs(filteredCGM);
-  renderHourlyDiverging(filteredCGM);
-  renderOvernightVsDaytime(filteredCGM);
-  renderPostMealCurve(filteredCGM,filteredMeals,filteredBoluses);
-  renderDayOfWeek(filteredCGM,filteredBoluses,filteredBasals);
-  renderSensitivityChart(filteredBoluses,filteredBasals);
-  renderInsights(filteredCGM,filteredBoluses,filteredBasals);
+  if(currentDays<=7){if(ilw)ilw.style.display='block';safe(()=>renderInsulinLanes(filteredBoluses,filteredBasals,filteredCGM),'renderInsulinLanes');}else{if(ilw)ilw.style.display='none';}
+  safe(()=>renderTIR(filteredCGM),'renderTIR');
+  safe(()=>renderHourlyAvg(filteredCGM),'renderHourlyAvg');
+  safe(()=>renderTDDChart(filteredBoluses,filteredBasals),'renderTDDChart');
+  safe(()=>renderTDDStats(filteredBoluses,filteredBasals),'renderTDDStats');
+  safe(()=>renderHourlyLows(filteredCGM),'renderHourlyLows');
+  safe(()=>renderHourlyHighs(filteredCGM),'renderHourlyHighs');
+  safe(()=>renderHourlyDiverging(filteredCGM),'renderHourlyDiverging');
+  safe(()=>renderOvernightVsDaytime(filteredCGM),'renderOvernightVsDaytime');
+  safe(()=>renderPostMealCurve(filteredCGM,filteredMeals,filteredBoluses),'renderPostMealCurve');
+  safe(()=>renderDayOfWeek(filteredCGM,filteredBoluses,filteredBasals),'renderDayOfWeek');
+  safe(()=>renderSensitivityChart(filteredBoluses,filteredBasals),'renderSensitivityChart');
+  safe(()=>renderInsights(filteredCGM,filteredBoluses,filteredBasals),'renderInsights');
 }
 
 function renderMetrics(cgm,boluses,basals){
