@@ -856,9 +856,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   const xOf = t => (chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left)) * scaleX;
   const yOfGluc = v => chart.scales.y.getPixelForValue(v) * scaleY;
 
-  const xOf = t => chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left);
-  const yOfGluc = v => chart.scales.y.getPixelForValue(v);
-
   // Build exact pixel x from nearest CGM sample (Chart.js coords)
   const meta0 = chart.getDatasetMeta(0);
   function xSnap(ts){
