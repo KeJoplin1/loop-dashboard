@@ -828,29 +828,33 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
 
   const svgNS='http://www.w3.org/2000/svg';
 
-  // Match SVG coordinate space to container pixel dimensions
-  const containerEl=document.getElementById('chart-container');
-  const containerW=containerEl?containerEl.clientWidth:1000;
-  const containerH=containerEl?containerEl.clientHeight:440;
-  // Set viewBox so 1 SVG unit = 1 CSS pixel
-  overlay.setAttribute('viewBox',`0 0 ${containerW} ${containerH}`);
-  overlay.setAttribute('preserveAspectRatio','none');
+  // Remove viewBox — let SVG use natural CSS pixel coordinates
+  overlay.removeAttribute('viewBox');
+  overlay.removeAttribute('preserveAspectRatio');
 
-  // ── COORDINATE SYSTEM ────────────────────────────────────────────
-  // Container is 400px. Canvas 240px (top). SVG spans full 400px.
-  // We compress the x-axis tick area and push insulin lane below it.
-  // chartArea.bottom = bottom of glucose plot (~210px typically)
-  // X-axis label zone: chartArea.bottom → chartArea.bottom+30 (leave clear)
-  // Pill zone: chartArea.bottom + 32 → chartArea.bottom + 52
-  // Insulin lane: chartArea.bottom + 56 → 395px (grows upward from bottom)
-  const GLUC_TOP = chartArea.top;
-  const GLUC_BOT = chartArea.bottom;
-  const XAXIS_CLEAR = GLUC_BOT + 32;   // x-axis labels live here — don't draw over it
+  // Chart.js chartArea coords are in canvas internal pixels.
+  // The canvas CSS size may differ from its internal size — apply a scale factor.
+  const canvasEl=document.getElementById('glucChart');
+  const cssW=canvasEl?canvasEl.clientWidth:chartArea.right;
+  const internalW=canvasEl?canvasEl.width:chartArea.right;
+  const scaleX=cssW/internalW;
+  const cssH=canvasEl?canvasEl.clientHeight:240;
+  const internalH=canvasEl?canvasEl.height:240;
+  const scaleY=cssH/internalH;
+
+  // ── COORDINATE SYSTEM (scale-corrected) ─────────────────────────
+  const GLUC_TOP = chartArea.top * scaleY;
+  const GLUC_BOT = chartArea.bottom * scaleY;
   const PILL_TOP = GLUC_BOT + 32;
   const PILL_BOT = GLUC_BOT + 52;
   const INS_TOP  = GLUC_BOT + 56;
-  const INS_BOT  = 430;
+  const INS_BOT  = cssH + 160;
   const INS_H    = INS_BOT - INS_TOP;
+  const LANE_LEFT  = chartArea.left * scaleX;
+  const LANE_RIGHT = chartArea.right * scaleX;
+
+  const xOf = t => (chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left)) * scaleX;
+  const yOfGluc = v => chart.scales.y.getPixelForValue(v) * scaleY;
 
   const xOf = t => chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left);
   const yOfGluc = v => chart.scales.y.getPixelForValue(v);
@@ -861,7 +865,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     let bestX=null,bestD=Infinity;
     cgmSampled.forEach((d,i)=>{
       const dd=Math.abs(d.t.getTime()-ts);
-      if(dd<bestD&&meta0.data[i]){bestD=dd;bestX=meta0.data[i].x;}
+      if(dd<bestD&&meta0.data[i]){bestD=dd;bestX=meta0.data[i].x*scaleX;}
     });
     return bestX!=null?bestX:xOf(ts);
   }
@@ -926,8 +930,8 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
 
     // Lane background
     const laneBg=document.createElementNS(svgNS,'rect');
-    laneBg.setAttribute('x',chartArea.left);laneBg.setAttribute('y',INS_TOP);
-    laneBg.setAttribute('width',chartArea.right-chartArea.left);laneBg.setAttribute('height',INS_H);
+    laneBg.setAttribute('x',LANE_LEFT);laneBg.setAttribute('y',INS_TOP);
+    laneBg.setAttribute('width',LANE_RIGHT-LANE_LEFT);laneBg.setAttribute('height',INS_H);
     laneBg.setAttribute('fill','rgba(255,255,255,0.015)');laneBg.setAttribute('rx','2');
     overlay.appendChild(laneBg);
 
@@ -936,10 +940,10 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     if(basalsSorted.length>1){
       for(let i=0;i<basalsSorted.length;i++){
         const b=basalsSorted[i];
-        const x1=Math.max(xOf(b.t.getTime()),chartArea.left);
+        const x1=Math.max(xOf(b.t.getTime()),LANE_LEFT);
         const x2=i<basalsSorted.length-1
-          ? Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right)
-          : chartArea.right;
+          ? Math.min(xOf(basalsSorted[i+1].t.getTime()),LANE_RIGHT)
+          : LANE_RIGHT;
         if(x2<=x1) continue;
         const rate=b.rate||0;
         if(rate<=0) continue;
@@ -957,10 +961,10 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       // Draw purple top-line over all basal rects
       let d='';
       basalsSorted.forEach((b,i)=>{
-        const x1=Math.max(xOf(b.t.getTime()),chartArea.left);
+        const x1=Math.max(xOf(b.t.getTime()),LANE_LEFT);
         const x2=i<basalsSorted.length-1
-          ? Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right)
-          : chartArea.right;
+          ? Math.min(xOf(basalsSorted[i+1].t.getTime()),LANE_RIGHT)
+          : LANE_RIGHT;
         if(x2<=x1) return;
         const h=Math.max(2,((b.rate||0)/maxRate)*USABLE_H*0.6);
         const y=INS_BOT-h;
@@ -1039,14 +1043,14 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
 
     // Lane label + legend
     const insLabel=document.createElementNS(svgNS,'text');
-    insLabel.setAttribute('x',chartArea.left-4);insLabel.setAttribute('y',(INS_TOP+INS_BOT)/2+4);
+    insLabel.setAttribute('x',LANE_LEFT-4);insLabel.setAttribute('y',(INS_TOP+INS_BOT)/2+4);
     insLabel.setAttribute('text-anchor','end');insLabel.setAttribute('fill','rgba(200,195,215,0.4)');
     insLabel.setAttribute('font-size','9');insLabel.setAttribute('font-weight','600');
     insLabel.setAttribute('font-family','-apple-system,sans-serif');
     insLabel.textContent='Insulin';overlay.appendChild(insLabel);
 
     const leg=[[BASAL_COLOR,'Basal'],[BOLUS_COLOR,'Manual bolus'],[AUTO_COLOR,'Auto bolus']];
-    let lx=chartArea.left;const legY=INS_BOT+12;
+    let lx=LANE_LEFT;const legY=INS_BOT+12;
     leg.forEach(([color,label])=>{
       const dot=document.createElementNS(svgNS,'rect');
       dot.setAttribute('x',lx);dot.setAttribute('y',legY-5);dot.setAttribute('width',8);dot.setAttribute('height',4);dot.setAttribute('rx','1');dot.setAttribute('fill',color);overlay.appendChild(dot);
@@ -1320,27 +1324,30 @@ function renderHourlyDiverging(cgm){
   hourlyDivergingChart=new Chart(canvas,{
     type:'bar',
     data:{labels:blkLabels,datasets:[
-      {label:'Highs',data:highBlocks,backgroundColor:'rgba(255,179,71,0.8)',borderRadius:3,borderSkipped:false,datalabels:{anchor:'end',align:'end',color:'rgba(255,179,71,0.9)',font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
-      {label:'Lows',data:lowBlocks.map(v=>-v),backgroundColor:'rgba(255,77,109,0.8)',borderRadius:3,borderSkipped:false,datalabels:{anchor:'end',align:'start',color:'rgba(255,77,109,0.9)',font:{size:10,weight:'700'},formatter:v=>v<0?Math.abs(v):''}},
+      {label:'Highs',data:highBlocks,
+       backgroundColor:'rgba(255,179,71,0.85)',borderRadius:3,borderSkipped:'bottom',
+       barPercentage:0.6,categoryPercentage:1.0,
+       datalabels:{anchor:'end',align:'end',color:'rgba(255,179,71,0.95)',font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
+      {label:'Lows',data:lowBlocks.map(v=>-v),
+       backgroundColor:'rgba(255,77,109,0.85)',borderRadius:3,borderSkipped:'top',
+       barPercentage:0.6,categoryPercentage:1.0,
+       datalabels:{anchor:'end',align:'start',color:'rgba(255,77,109,0.95)',font:{size:10,weight:'700'},formatter:v=>v<0?Math.abs(v):''}},
     ]},
     plugins:[zeroLinePlugin],
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
         datalabels:{display:true},
-        tooltip:{callbacks:{
-          label:ctx=>{
-            const v=Math.abs(ctx.parsed.y);
-            return ctx.dataset.label+': '+v+' readings';
-          }
-        }}
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+Math.abs(ctx.parsed.y)+' readings'}}
       },
       scales:{
-        x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false},stacked:false},
+        x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false},
+           offset:false},
         y:{
           ticks:{color:'#505058',font:{size:9},callback:v=>Math.abs(v)},
           grid:{color:grid},
-          min:-Math.ceil(maxVal*1.3),max:Math.ceil(maxVal*1.3),stepSize:Math.max(1,Math.ceil(maxVal/4))
+          min:-Math.ceil(maxVal*1.3),max:Math.ceil(maxVal*1.3),
+          stepSize:Math.max(1,Math.ceil(maxVal/4))
         }
       },
       layout:{padding:{top:20,bottom:4}}
