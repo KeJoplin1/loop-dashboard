@@ -98,9 +98,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .day-nav-btn:hover{background:var(--surface);color:var(--accent);border-color:var(--accent)}
 .day-nav-label{font-size:12px;font-weight:600;color:var(--text);min-width:72px;text-align:center}
 
-/* ── GLUCOSE CHART WRAP ─────────────────────────────────────── */
-.gluc-chart-wrap{position:relative;width:100%;height:240px}
-.bolus-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+/* ── GLUCOSE CHART CONTAINER ────────────────────────────────── */
+.bolus-overlay{pointer-events:none}
 
 /* ── UNIFIED TOOLTIP ─────────────────────────────────────────── */
 #event-tooltip{
@@ -190,15 +189,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked> Exercise</label>
       </div>
-      <div class="gluc-chart-wrap">
-        <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
-        <!-- SVG overlay — same size as canvas, meals/lines only -->
-        <svg id="bolus-overlay" class="bolus-overlay" style="pointer-events:all"></svg>
+      <!-- Unified chart container: glucose canvas + full-height SVG overlay -->
+      <div id="chart-container" style="position:relative;width:100%;height:400px">
+        <!-- Glucose canvas: top 240px -->
+        <canvas id="glucChart" role="img" aria-label="Glucose trace"
+          style="position:absolute;top:0;left:0;width:100%;height:240px"></canvas>
+        <!-- Single SVG spanning full 400px: glucose markers, bolus pills, insulin lane -->
+        <svg id="bolus-overlay" class="bolus-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:all;overflow:visible"></svg>
       </div>
-      <!-- Bolus pill strip — sits directly below the glucose chart -->
-      <div id="bolus-strip" style="position:relative;width:100%;height:52px;margin-top:0"></div>
-      <!-- Insulin delivery lanes: basal rate + auto bolus + manual bolus -->
-      <div id="insulin-lanes" style="position:relative;width:100%;margin-top:4px"></div>
 
     </div>
     <div id="event-tooltip"></div>
@@ -505,8 +503,6 @@ function renderAll(){
   document.getElementById('data-range').textContent=fmtDate(minT)+' — '+fmtDate(maxT)+' · '+filteredCGM.length+' readings';
   renderMetrics(filteredCGM,filteredBoluses,filteredBasals);
   renderGlucoseChart(filteredCGM);
-  if(currentDays<=7) renderInsulinLanes(filteredBoluses,filteredBasals,filteredCGM);
-  else{const el=document.getElementById('insulin-lanes');if(el)el.innerHTML='';}
   renderTIR(filteredCGM);
   renderHourlyAvg(filteredCGM);
   renderTDDChart(filteredBoluses,filteredBasals);
@@ -804,7 +800,7 @@ function renderGlucoseChart(cgm){
         y:{min:40,max:225,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
       },
       animation:{onComplete:()=>{
-        renderEventOverlay(glucChart,s,showBolus,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise);
+        renderEventOverlay(glucChart,s,showBolus,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise,filteredBasals,currentDays);
       }}
     }
   });
@@ -813,28 +809,44 @@ function renderGlucoseChart(cgm){
 // ── Round to nearest 0.1 ────────────────────────────────────────────
 function roundTenth(v){return Math.round(v*10)/10;}
 
-function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,meals,boluses,exercise){
+function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,meals,boluses,exercise,basals,nDays){
   const overlay=document.getElementById('bolus-overlay');
   if(!overlay||!chart) return;
   overlay.innerHTML='';
+
+  // Clear old bolus-strip (now unused)
   const strip=document.getElementById('bolus-strip');
   if(strip) strip.innerHTML='';
+
   const {chartArea}=chart;
   if(!chartArea) return;
+
   const minT=cgmSampled[0]?.t?.getTime();
   const maxT=cgmSampled[cgmSampled.length-1]?.t?.getTime();
   if(!minT||!maxT||maxT===minT) return;
   const tRange=maxT-minT;
-  const svgNS='http://www.w3.org/2000/svg';
-  const xOf=t=>chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left);
-  const yOfGluc=v=>chart.scales.y.getPixelForValue(v);
 
-  // Build lookup: timestamp ms → exact Chart.js pixel x for that CGM point
-  // This ensures dots, lines and pills all use Chart.js's own coordinate system
-  const meta0=chart.getDatasetMeta(0);
-  const cgmPxMap=new Map();
-  cgmSampled.forEach((d,i)=>{if(meta0.data[i]) cgmPxMap.set(d.t.getTime(), meta0.data[i].x);});
-  // xSnap: for a given timestamp, return the nearest CGM point's exact pixel x
+  const svgNS='http://www.w3.org/2000/svg';
+
+  // ── COORDINATE SYSTEM ────────────────────────────────────────────
+  // Canvas is 240px tall (top of container). SVG spans full 400px container.
+  // chartArea is relative to canvas top-left, which equals container top-left.
+  // Glucose zone: chartArea.top → chartArea.bottom (within 0–240px)
+  // Bolus pill zone: chartArea.bottom + 8  →  chartArea.bottom + 60
+  // Insulin lane: chartArea.bottom + 65  →  380px
+  const GLUC_TOP = chartArea.top;
+  const GLUC_BOT = chartArea.bottom;
+  const PILL_TOP = GLUC_BOT + 8;
+  const PILL_BOT = GLUC_BOT + 58;
+  const INS_TOP  = GLUC_BOT + 66;
+  const INS_BOT  = 385;
+  const INS_H    = INS_BOT - INS_TOP;
+
+  const xOf = t => chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left);
+  const yOfGluc = v => chart.scales.y.getPixelForValue(v);
+
+  // Build exact pixel x from nearest CGM sample (Chart.js coords)
+  const meta0 = chart.getDatasetMeta(0);
   function xSnap(ts){
     let bestX=null,bestD=Infinity;
     cgmSampled.forEach((d,i)=>{
@@ -843,12 +855,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     });
     return bestX!=null?bestX:xOf(ts);
   }
-  const CHART_TOP=chartArea.top;
-  const CHART_BOT=chartArea.bottom;
-  const BOLUS_COLOR='#4d9fff';
-  const MEAL_COLOR='#f472b6';   // pink
-  const EX_COLOR='#67e8f9';
-  const eventList=[];
 
   function glucAtTime(ts){
     let best=null,bestD=Infinity;
@@ -856,124 +862,211 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     return best;
   }
 
-  // ── EXERCISE BANDS ───────────────────────────────────────────
+  const BOLUS_COLOR='#4d9fff';
+  const MEAL_COLOR='#f472b6';
+  const EX_COLOR='#67e8f9';
+  const AUTO_COLOR='#00d4a0';
+  const BASAL_COLOR='#a78bfa';
+
+  const eventList=[];
+
+  // ── EXERCISE BANDS ───────────────────────────────────────────────
   if(showExercise&&exercise&&exercise.length){
     exercise.forEach(ex=>{
-      const sT=ex.t.getTime();
-      if(sT>maxT) return;
+      const sT=ex.t.getTime();if(sT>maxT) return;
       const eT=sT+ex.dur*60000;
       const x1=Math.max(xOf(sT),chartArea.left);
       const x2=Math.min(xOf(eT),chartArea.right);
       if(x2<=x1) return;
       const band=document.createElementNS(svgNS,'rect');
-      band.setAttribute('x',x1);band.setAttribute('y',CHART_TOP);
-      band.setAttribute('width',x2-x1);band.setAttribute('height',CHART_BOT-CHART_TOP);
-      band.setAttribute('fill','rgba(103,232,249,0.07)');overlay.appendChild(band);
+      band.setAttribute('x',x1);band.setAttribute('y',GLUC_TOP);
+      band.setAttribute('width',x2-x1);band.setAttribute('height',INS_BOT-GLUC_TOP);
+      band.setAttribute('fill','rgba(103,232,249,0.05)');overlay.appendChild(band);
       const ln=document.createElementNS(svgNS,'line');
-      ln.setAttribute('x1',x1);ln.setAttribute('y1',CHART_TOP);
-      ln.setAttribute('x2',x1);ln.setAttribute('y2',CHART_BOT);
-      ln.setAttribute('stroke',EX_COLOR);ln.setAttribute('stroke-width','1.5');ln.setAttribute('opacity','0.5');
+      ln.setAttribute('x1',x1);ln.setAttribute('y1',GLUC_TOP);
+      ln.setAttribute('x2',x1);ln.setAttribute('y2',INS_BOT);
+      ln.setAttribute('stroke',EX_COLOR);ln.setAttribute('stroke-width','1.5');ln.setAttribute('opacity','0.45');
       overlay.appendChild(ln);
       const lbl=document.createElementNS(svgNS,'text');
-      lbl.setAttribute('x',x1+4);lbl.setAttribute('y',CHART_TOP+11);
-      lbl.setAttribute('fill',EX_COLOR);lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','700');lbl.setAttribute('opacity','0.8');
-      lbl.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-      lbl.textContent='🏃 '+Math.round(ex.dur)+'m';
-      overlay.appendChild(lbl);
+      lbl.setAttribute('x',x1+4);lbl.setAttribute('y',GLUC_TOP+11);
+      lbl.setAttribute('fill',EX_COLOR);lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','700');lbl.setAttribute('opacity','0.75');
+      lbl.setAttribute('font-family','-apple-system,sans-serif');
+      lbl.textContent='🏃 '+Math.round(ex.dur)+'m';overlay.appendChild(lbl);
       eventList.push({xPx:x1,type:'exercise',name:ex.name,dur:ex.dur,t:ex.t});
     });
   }
 
-  // ── BOLUS PILLS (strip below chart) + dots + dotted lines ─────
-  if(showBolus&&boluses&&boluses.length&&strip){
-    const vis=boluses.filter(b=>b.units>=0.5);
-    if(vis.length){
-      // Use a viewBox matching the overlay's actual pixel width so xOf() values
-      // map identically in both the strip SVG and the overlay SVG
-      const overlayW=overlay.clientWidth||overlay.parentElement?.clientWidth||800;
-      const svg=document.createElementNS(svgNS,'svg');
-      svg.setAttribute('viewBox',`0 0 ${overlayW} 52`);
-      svg.setAttribute('preserveAspectRatio','none');
-      svg.setAttribute('width','100%');svg.setAttribute('height','52');
-      svg.style.cssText='position:absolute;top:0;left:0;pointer-events:all;display:block';
-      vis.forEach(b=>{
-        const bT=b.t.getTime();
-        if(bT<minT||bT>maxT) return;
-        const xPx=xSnap(bT);
-        const units=roundTenth(b.units);
-        const label=units+'u';
-        const PW=Math.max(26,label.length*6+12),PH=17,PY=4;
-        const pill=document.createElementNS(svgNS,'rect');
-        pill.setAttribute('x',xPx-PW/2);pill.setAttribute('y',PY);pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-        pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(10,20,40,0.88)');
-        pill.setAttribute('stroke',BOLUS_COLOR);pill.setAttribute('stroke-width','1.5');
-        svg.appendChild(pill);
-        const lt=document.createElementNS(svgNS,'text');
-        lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
-        lt.setAttribute('fill',BOLUS_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
-        lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-        lt.textContent=label;svg.appendChild(lt);
-        eventList.push({xPx,type:'bolus',units,t:b.t});
-        // Blue dot — use Chart.js's own pixel coords for the nearest CGM point
-        {let bi=null,bd=Infinity;cgmSampled.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-bT);if(dd<bd){bd=dd;bi=i;}});
-        if(bi!==null&&bd<5*60000){
-          const meta=chart.getDatasetMeta(0);
-          const pt=meta.data[bi];
-          if(pt){
-            const bdot=document.createElementNS(svgNS,'circle');
-            bdot.setAttribute('cx',pt.x);bdot.setAttribute('cy',pt.y);bdot.setAttribute('r','3');
-            bdot.setAttribute('fill',BOLUS_COLOR);bdot.setAttribute('stroke','rgba(0,0,0,0.3)');bdot.setAttribute('stroke-width','1');
-            overlay.appendChild(bdot);
-          }
-        }}
-        // Dotted line — same xOf(bT)
-        const ln=document.createElementNS(svgNS,'line');
-        ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
-        ln.setAttribute('stroke',BOLUS_COLOR);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','3,3');ln.setAttribute('opacity','0.3');
-        overlay.appendChild(ln);
-      });
-      strip.appendChild(svg);
-    }
-  }
+  // ── INSULIN LANE ─────────────────────────────────────────────────
+  // Draw in INS_TOP→INS_BOT zone — basal filled area, then bolus bars over it
+  if(nDays<=7&&basals&&basals.length){
+    const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
+    const maxRate=Math.max(...basalsSorted.map(b=>b.rate),0.1);
+    const AUTO_THRESHOLD=0.5;
+    const autoBoluses=boluses?boluses.filter(b=>b.units<AUTO_THRESHOLD):[];
+    const manualBoluses=boluses?boluses.filter(b=>b.units>=AUTO_THRESHOLD):[];
+    const maxManual=Math.max(...(manualBoluses.map(b=>b.units)),1);
 
-  // ── MEAL PILLS (top of glucose chart) — purple ───────────────
-  if(showMeals&&meals&&meals.length){
-    meals.forEach(m=>{
-      const mT=m.t.getTime();
-      if(mT<minT||mT>maxT) return;
-      const xPx=xSnap(mT);
-      const label=m.carbs>0?m.carbs+'g':'meal';
-      const PW=Math.max(28,label.length*6+14),PH=17,PY=CHART_TOP+4;
-      const ln=document.createElementNS(svgNS,'line');
-      ln.setAttribute('x1',xPx);ln.setAttribute('y1',CHART_TOP);ln.setAttribute('x2',xPx);ln.setAttribute('y2',CHART_BOT);
-      ln.setAttribute('stroke',MEAL_COLOR);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','3,3');ln.setAttribute('opacity','0.4');
-      overlay.appendChild(ln);
-      const pill=document.createElementNS(svgNS,'rect');
-      pill.setAttribute('x',xPx-PW/2);pill.setAttribute('y',PY);pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(30,10,45,0.9)');
-      pill.setAttribute('stroke',MEAL_COLOR);pill.setAttribute('stroke-width','1.5');overlay.appendChild(pill);
-      const lt=document.createElementNS(svgNS,'text');
-      lt.setAttribute('x',xPx);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
-      lt.setAttribute('fill',MEAL_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
-      lt.setAttribute('font-family','-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif');
-      lt.textContent=label;overlay.appendChild(lt);
-      // Pink dot — use Chart.js's own pixel coords for the nearest CGM point
-      {let mi=null,md=Infinity;cgmSampled.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-mT);if(dd<md){md=dd;mi=i;}});
-      if(mi!==null&&md<5*60000){
-        const meta=chart.getDatasetMeta(0);
-        const pt=meta.data[mi];
-        if(pt){
-          const mdot=document.createElementNS(svgNS,'circle');
-          mdot.setAttribute('cx',pt.x);mdot.setAttribute('cy',pt.y);mdot.setAttribute('r','3');
-          mdot.setAttribute('fill',MEAL_COLOR);mdot.setAttribute('stroke','rgba(0,0,0,0.3)');mdot.setAttribute('stroke-width','1');
-          overlay.appendChild(mdot);
+    // Lane background
+    const laneBg=document.createElementNS(svgNS,'rect');
+    laneBg.setAttribute('x',chartArea.left);laneBg.setAttribute('y',INS_TOP);
+    laneBg.setAttribute('width',chartArea.right-chartArea.left);laneBg.setAttribute('height',INS_H);
+    laneBg.setAttribute('fill','rgba(255,255,255,0.02)');laneBg.setAttribute('rx','2');
+    overlay.appendChild(laneBg);
+
+    // Basal: filled step polygon from INS_BOT upward
+    if(basalsSorted.length>1){
+      let pts=`${xOf(basalsSorted[0].t.getTime())},${INS_BOT} `;
+      basalsSorted.forEach((b,i)=>{
+        const x=xOf(b.t.getTime());
+        if(x<chartArea.left||x>chartArea.right) return;
+        const y=INS_BOT-(b.rate/maxRate)*(INS_H*0.7);
+        pts+=`${x},${y} `;
+        if(i<basalsSorted.length-1){
+          const nx=Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right);
+          pts+=`${nx},${y} `;
         }
-      }}
-      eventList.push({xPx,type:'meal',carbs:m.carbs,t:m.t});
+      });
+      pts+=`${chartArea.right},${INS_BOT}`;
+      const area=document.createElementNS(svgNS,'polygon');
+      area.setAttribute('points',pts);
+      area.setAttribute('fill','rgba(167,139,250,0.22)');area.setAttribute('stroke','rgba(167,139,250,0.5)');
+      area.setAttribute('stroke-width','1');overlay.appendChild(area);
+    }
+
+    // Auto boluses: teal bars growing up from INS_BOT
+    autoBoluses.forEach(b=>{
+      const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
+      const x=xOf(bT);
+      const h=Math.max(3,Math.round((b.units/AUTO_THRESHOLD)*(INS_H*0.4)));
+      const bar=document.createElementNS(svgNS,'rect');
+      bar.setAttribute('x',x-1.5);bar.setAttribute('y',INS_BOT-h);
+      bar.setAttribute('width',3);bar.setAttribute('height',h);
+      bar.setAttribute('fill','rgba(0,212,160,0.55)');bar.setAttribute('rx','1');
+      overlay.appendChild(bar);
+    });
+
+    // Manual boluses: blue bars growing up from INS_BOT, with full-height guide line + pill
+    manualBoluses.forEach(b=>{
+      const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
+      const x=xSnap(bT);
+      const units=roundTenth(b.units);
+
+      // Full-height guide line from glucose area through insulin lane
+      const guideLine=document.createElementNS(svgNS,'line');
+      guideLine.setAttribute('x1',x);guideLine.setAttribute('y1',GLUC_TOP);
+      guideLine.setAttribute('x2',x);guideLine.setAttribute('y2',INS_BOT);
+      guideLine.setAttribute('stroke','rgba(77,159,255,0.15)');
+      guideLine.setAttribute('stroke-width','1');guideLine.setAttribute('stroke-dasharray','3,4');
+      overlay.appendChild(guideLine);
+
+      // Glucose dot
+      const glucVal=glucAtTime(bT);
+      if(glucVal!=null){
+        const yG=yOfGluc(Math.min(Math.max(glucVal,40),225));
+        const bdot=document.createElementNS(svgNS,'circle');
+        bdot.setAttribute('cx',x);bdot.setAttribute('cy',yG);bdot.setAttribute('r','3');
+        bdot.setAttribute('fill',BOLUS_COLOR);bdot.setAttribute('stroke','rgba(0,0,0,0.3)');bdot.setAttribute('stroke-width','1');
+        overlay.appendChild(bdot);
+      }
+
+      // Blue bar in insulin lane
+      const barH=Math.max(10,Math.round((units/maxManual)*(INS_H*0.85)));
+      const bar=document.createElementNS(svgNS,'rect');
+      bar.setAttribute('x',x-4);bar.setAttribute('y',INS_BOT-barH);
+      bar.setAttribute('width',8);bar.setAttribute('height',barH);
+      bar.setAttribute('fill','rgba(77,159,255,0.85)');bar.setAttribute('rx','3');
+      overlay.appendChild(bar);
+
+      // Pill label in pill zone
+      const label=units+'u';
+      const PW=Math.max(26,label.length*6+12);const PH=17;
+      const PY=PILL_TOP+4;
+      const pill=document.createElementNS(svgNS,'rect');
+      pill.setAttribute('x',x-PW/2);pill.setAttribute('y',PY);
+      pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(10,20,40,0.88)');
+      pill.setAttribute('stroke',BOLUS_COLOR);pill.setAttribute('stroke-width','1.5');
+      overlay.appendChild(pill);
+      const lt=document.createElementNS(svgNS,'text');
+      lt.setAttribute('x',x);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
+      lt.setAttribute('fill',BOLUS_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+      lt.setAttribute('font-family','-apple-system,sans-serif');
+      lt.textContent=label;overlay.appendChild(lt);
+
+      eventList.push({xPx:x,type:'bolus',units,t:b.t});
+    });
+
+    // Lane label
+    const lbl=document.createElementNS(svgNS,'text');
+    lbl.setAttribute('x',chartArea.left-4);lbl.setAttribute('y',(INS_TOP+INS_BOT)/2+4);
+    lbl.setAttribute('text-anchor','end');lbl.setAttribute('fill','rgba(200,195,215,0.45)');
+    lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','600');
+    lbl.setAttribute('font-family','-apple-system,sans-serif');
+    lbl.textContent='Insulin';overlay.appendChild(lbl);
+
+    // Legend
+    const leg=[[BASAL_COLOR,'Basal'],[BOLUS_COLOR,'Manual'],[AUTO_COLOR,'Auto']];
+    let lx=chartArea.left;const legY=INS_BOT+11;
+    leg.forEach(([color,label])=>{
+      const dot=document.createElementNS(svgNS,'rect');
+      dot.setAttribute('x',lx);dot.setAttribute('y',legY-5);dot.setAttribute('width',8);dot.setAttribute('height',4);dot.setAttribute('rx','1');dot.setAttribute('fill',color);overlay.appendChild(dot);
+      const lt=document.createElementNS(svgNS,'text');
+      lt.setAttribute('x',lx+11);lt.setAttribute('y',legY);
+      lt.setAttribute('fill','rgba(130,130,138,0.7)');lt.setAttribute('font-size','9');
+      lt.setAttribute('font-family','-apple-system,sans-serif');lt.textContent=label;overlay.appendChild(lt);
+      lx+=label.length*5.5+18;
+    });
+  } else if(nDays>7&&boluses){
+    // Multi-day: just draw manual bolus guide lines + pills (no insulin lane)
+    boluses.filter(b=>b.units>=0.5).forEach(b=>{
+      const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
+      const x=xSnap(bT);
+      eventList.push({xPx:x,type:'bolus',units:roundTenth(b.units),t:b.t});
     });
   }
 
-  // ── Tooltip ───────────────────────────────────────────────────
+  // ── MEAL PILLS + LINES ───────────────────────────────────────────
+  if(showMeals&&meals&&meals.length){
+    meals.forEach(m=>{
+      const mT=m.t.getTime();if(mT<minT||mT>maxT) return;
+      const x=xSnap(mT);
+      const label=m.carbs>0?m.carbs+'g':'meal';
+      const PW=Math.max(28,label.length*6+14);const PH=17;
+      const PY=GLUC_TOP+4;
+
+      // Line through entire height — glucose area + pill zone + insulin lane
+      const lineBot=nDays<=7?INS_BOT:GLUC_BOT;
+      const ln=document.createElementNS(svgNS,'line');
+      ln.setAttribute('x1',x);ln.setAttribute('y1',GLUC_TOP);
+      ln.setAttribute('x2',x);ln.setAttribute('y2',lineBot);
+      ln.setAttribute('stroke',MEAL_COLOR);ln.setAttribute('stroke-width','1');
+      ln.setAttribute('stroke-dasharray','3,3');ln.setAttribute('opacity','0.45');
+      overlay.appendChild(ln);
+
+      // Pill at top
+      const pill=document.createElementNS(svgNS,'rect');
+      pill.setAttribute('x',x-PW/2);pill.setAttribute('y',PY);pill.setAttribute('width',PW);pill.setAttribute('height',PH);
+      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(30,10,45,0.9)');
+      pill.setAttribute('stroke',MEAL_COLOR);pill.setAttribute('stroke-width','1.5');overlay.appendChild(pill);
+      const lt=document.createElementNS(svgNS,'text');
+      lt.setAttribute('x',x);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
+      lt.setAttribute('fill',MEAL_COLOR);lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
+      lt.setAttribute('font-family','-apple-system,sans-serif');lt.textContent=label;overlay.appendChild(lt);
+
+      // Dot on glucose trace
+      const glucVal=glucAtTime(mT);
+      if(glucVal!=null){
+        const yG=yOfGluc(Math.min(Math.max(glucVal,40),225));
+        const dot=document.createElementNS(svgNS,'circle');
+        dot.setAttribute('cx',x);dot.setAttribute('cy',yG);dot.setAttribute('r','3');
+        dot.setAttribute('fill',MEAL_COLOR);dot.setAttribute('stroke','rgba(0,0,0,0.3)');dot.setAttribute('stroke-width','1');
+        overlay.appendChild(dot);
+      }
+      eventList.push({xPx:x,type:'meal',carbs:m.carbs,t:m.t});
+    });
+  }
+
+  // ── TOOLTIP ──────────────────────────────────────────────────────
   const tooltip=document.getElementById('event-tooltip');
   if(!tooltip) return;
   const SNAP_X=18;
@@ -1008,10 +1101,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   const canvas=document.getElementById('glucChart');
   canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
   canvas.onmouseleave=()=>{tooltip.style.display='none';};
-  if(strip){
-    strip.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
-    strip.onmouseleave=()=>{tooltip.style.display='none';};
-  }
 }
 
 function renderTIR(cgm){
