@@ -190,7 +190,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked> Exercise</label>
       </div>
       <!-- Unified chart container: glucose canvas + full-height SVG overlay -->
-      <div id="chart-container" style="position:relative;width:100%;height:400px">
+      <div id="chart-container" style="position:relative;width:100%;height:440px">
         <!-- Glucose canvas: top 240px -->
         <canvas id="glucChart" role="img" aria-label="Glucose trace"
           style="position:absolute;top:0;left:0;width:100%;height:240px"></canvas>
@@ -841,7 +841,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   const PILL_TOP = GLUC_BOT + 32;
   const PILL_BOT = GLUC_BOT + 52;
   const INS_TOP  = GLUC_BOT + 56;
-  const INS_BOT  = 395;
+  const INS_BOT  = 430;
   const INS_H    = INS_BOT - INS_TOP;
 
   const xOf = t => chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left);
@@ -925,44 +925,57 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
     overlay.appendChild(laneBg);
 
     // ── BASAL: filled step area growing UP from INS_BOT ──────────
+    // Each basal segment is a rect from INS_BOT upward by (delivered/max)*USABLE_H
     if(basalsSorted.length>1){
-      let pts=`${Math.max(xOf(basalsSorted[0].t.getTime()),chartArea.left)},${INS_BOT} `;
       for(let i=0;i<basalsSorted.length;i++){
         const b=basalsSorted[i];
-        const x=Math.min(Math.max(xOf(b.t.getTime()),chartArea.left),chartArea.right);
+        const x1=Math.max(xOf(b.t.getTime()),chartArea.left);
+        const x2=i<basalsSorted.length-1
+          ? Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right)
+          : chartArea.right;
+        if(x2<=x1) continue;
         const delivered=b.delivered||0;
-        const y=INS_BOT-(delivered/maxDelivered)*USABLE_H; // UP from bottom
-        if(i===0) pts+=`${x},${y} `;
-        else {
-          // step: horizontal at prev height, then vertical to new height
-          const prevDelivered=basalsSorted[i-1].delivered||0;
-          const prevY=INS_BOT-(prevDelivered/maxDelivered)*USABLE_H;
-          pts+=`${x},${prevY} ${x},${y} `;
-        }
-        // extend to next segment start
-        if(i<basalsSorted.length-1){
-          const nx=Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right);
-          pts+=`${nx},${y} `;
-        }
+        if(delivered<=0) continue;
+        // h = pixels upward from INS_BOT
+        const h=Math.max(1,(delivered/maxDelivered)*USABLE_H);
+        const rect=document.createElementNS(svgNS,'rect');
+        rect.setAttribute('x',x1);
+        rect.setAttribute('y',INS_BOT-h);   // top of bar = INS_BOT minus height
+        rect.setAttribute('width',Math.max(1,x2-x1));
+        rect.setAttribute('height',h);
+        rect.setAttribute('fill','rgba(167,139,250,0.35)');
+        rect.setAttribute('stroke','rgba(167,139,250,0.0)');
+        overlay.appendChild(rect);
       }
-      pts+=`${chartArea.right},${INS_BOT}`;
-      const area=document.createElementNS(svgNS,'polygon');
-      area.setAttribute('points',pts);
-      area.setAttribute('fill','rgba(167,139,250,0.28)');
-      area.setAttribute('stroke','rgba(167,139,250,0.65)');
-      area.setAttribute('stroke-width','1');
-      overlay.appendChild(area);
+      // Draw purple top-line over all basal rects
+      let d='';
+      basalsSorted.forEach((b,i)=>{
+        const x1=Math.max(xOf(b.t.getTime()),chartArea.left);
+        const x2=i<basalsSorted.length-1
+          ? Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right)
+          : chartArea.right;
+        if(x2<=x1) return;
+        const h=Math.max(1,(( b.delivered||0)/maxDelivered)*USABLE_H);
+        const y=INS_BOT-h;
+        d+=`M ${x1} ${y} L ${x2} ${y} `;
+      });
+      const line=document.createElementNS(svgNS,'path');
+      line.setAttribute('d',d);
+      line.setAttribute('fill','none');
+      line.setAttribute('stroke','rgba(167,139,250,0.75)');
+      line.setAttribute('stroke-width','1.5');
+      overlay.appendChild(line);
     }
 
     // ── AUTO BOLUSES: teal bars growing UP from INS_BOT, same scale ──
     autoBoluses.forEach(b=>{
       const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
       const x=xOf(bT);
-      const h=Math.max(2,Math.round((b.units/maxDelivered)*USABLE_H));
+      const h=Math.max(3,Math.round((b.units/maxDelivered)*USABLE_H));
       const bar=document.createElementNS(svgNS,'rect');
-      bar.setAttribute('x',x-1.5);bar.setAttribute('y',INS_BOT-h);
-      bar.setAttribute('width',3);bar.setAttribute('height',h);
-      bar.setAttribute('fill','rgba(0,212,160,0.60)');bar.setAttribute('rx','1');
+      bar.setAttribute('x',x-2);bar.setAttribute('y',INS_BOT-h);
+      bar.setAttribute('width',4);bar.setAttribute('height',h);
+      bar.setAttribute('fill','rgba(0,212,160,0.70)');bar.setAttribute('rx','1');
       overlay.appendChild(bar);
     });
 
@@ -1056,7 +1069,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       const PY=GLUC_TOP+4;
 
       // Line through entire height — glucose area + pill zone + insulin lane
-      const lineBot=nDays<=7?INS_BOT:GLUC_BOT;
+      const lineBot=nDays<=7?INS_BOT+10:GLUC_BOT;
       const ln=document.createElementNS(svgNS,'line');
       ln.setAttribute('x1',x);ln.setAttribute('y1',GLUC_TOP);
       ln.setAttribute('x2',x);ln.setAttribute('y2',lineBot);
