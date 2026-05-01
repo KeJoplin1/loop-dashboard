@@ -617,19 +617,12 @@ function renderMetrics(cgm,boluses,basals){
 
 
 function renderInsulinLanes(boluses,basals,cgm){
-  // Uses a separate Chart.js chart so x-axis alignment is guaranteed
   const canvas=document.getElementById('insulinChart');
   const wrap=document.getElementById('insulin-lane-wrap');
   if(!canvas||!cgm.length) return;
   if(window._insulinChart instanceof Chart) window._insulinChart.destroy();
 
-  const minT=cgm[0].t.getTime();
-  const maxT=cgm[cgm.length-1].t.getTime();
-
-  // Build time-series arrays at 5-min resolution matching CGM cadence
   const AUTO_THRESHOLD=0.5;
-
-  // Basal: step function — for each CGM timestamp, find the active basal rate
   const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
   const basalRateAt=t=>{
     let rate=0;
@@ -640,37 +633,40 @@ function renderInsulinLanes(boluses,basals,cgm){
     return rate;
   };
 
-  // Use CGM timestamps as x-axis (same as glucose chart)
-  const labels=cgm.map(d=>d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
-  const basalData=cgm.map(d=>Math.round(basalRateAt(d.t.getTime())*100)/100);
+  // Downsample to max 288 points (one per 5-min for a day, or fewer for multi-day)
+  const MAX_PTS=288;
+  const step=Math.max(1,Math.floor(cgm.length/MAX_PTS));
+  const sampled=cgm.filter((_,i)=>i%step===0);
 
-  // Auto bolus: place at nearest CGM timestamp
-  const autoBolusData=new Array(cgm.length).fill(0);
-  const manualBolusData=new Array(cgm.length).fill(0);
+  const labels=sampled.map(d=>d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+  const basalData=sampled.map(d=>Math.round(basalRateAt(d.t.getTime())*100)/100);
+
+  const autoBolusData=new Array(sampled.length).fill(0);
+  const manualBolusData=new Array(sampled.length).fill(0);
   boluses.forEach(b=>{
     let bestI=0,bestD=Infinity;
-    cgm.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-b.t.getTime());if(dd<bestD){bestD=dd;bestI=i;}});
+    sampled.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-b.t.getTime());if(dd<bestD){bestD=dd;bestI=i;}});
     if(b.units<AUTO_THRESHOLD) autoBolusData[bestI]+=b.units;
     else manualBolusData[bestI]+=b.units;
   });
 
   const maxRate=Math.max(...basalData,0.1);
-  const maxAuto=Math.max(...autoBolusData,0.05);
-  const maxManual=Math.max(...manualBolusData,0.5);
+  const maxAuto=Math.max(...autoBolusData.filter(v=>v>0),0.05);
+  const maxManual=Math.max(...manualBolusData.filter(v=>v>0),0.5);
 
-  // Normalize all to same visual scale (max 1.0)
   const basalNorm=basalData.map(v=>v/maxRate);
-  const autoNorm=autoBolusData.map(v=>v>0?v/maxAuto*0.8:null);
-  const manualNorm=manualBolusData.map(v=>v>0?v/maxManual:null);
+  const autoNorm=autoBolusData.map(v=>v>0?Math.min(v/maxAuto*0.85,1):null);
+  const manualNorm=manualBolusData.map(v=>v>0?Math.min(v/maxManual,1):null);
 
   const grid='rgba(255,255,255,0.04)';
   window._insulinChart=new Chart(canvas,{
     type:'bar',
     data:{labels,datasets:[
-      {label:'Basal',data:basalNorm,backgroundColor:'rgba(167,139,250,0.35)',borderColor:'rgba(167,139,250,0.6)',borderWidth:0,barPercentage:1.0,categoryPercentage:1.0,datalabels:{display:false}},
-      {label:'Auto bolus',data:autoNorm,backgroundColor:'rgba(0,212,160,0.65)',borderColor:'rgba(0,212,160,0.8)',borderWidth:0,barPercentage:0.4,categoryPercentage:1.0,datalabels:{display:false}},
-      {label:'Manual bolus',data:manualNorm,backgroundColor:'rgba(77,159,255,0.88)',borderColor:'rgba(77,159,255,1)',borderWidth:0,barPercentage:0.3,categoryPercentage:1.0,
-       datalabels:{display:ctx=>ctx.parsed.y!=null&&ctx.parsed.y>0,anchor:'end',align:'end',color:'#4d9fff',font:{size:8,weight:'700'},formatter:(v,ctx)=>{const orig=manualBolusData[ctx.dataIndex];return orig>0?roundTenth(orig)+'u':'';}}}
+      {label:'Basal',data:basalNorm,backgroundColor:'rgba(167,139,250,0.4)',borderWidth:0,barPercentage:1.0,categoryPercentage:1.0,datalabels:{display:false}},
+      {label:'Auto bolus',data:autoNorm,backgroundColor:'rgba(0,212,160,0.7)',borderWidth:0,barPercentage:0.5,categoryPercentage:1.0,datalabels:{display:false}},
+      {label:'Manual bolus',data:manualNorm,backgroundColor:'rgba(77,159,255,0.9)',borderWidth:0,barPercentage:0.35,categoryPercentage:1.0,
+       datalabels:{display:ctx=>ctx.parsed.y!=null&&ctx.parsed.y>0,anchor:'end',align:'end',color:'#4d9fff',font:{size:8,weight:'700'},
+         formatter:(v,ctx)=>{const orig=manualBolusData[ctx.dataIndex];return orig>0?roundTenth(orig)+'u':'';}}},
     ]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{
@@ -688,24 +684,22 @@ function renderInsulinLanes(boluses,basals,cgm){
       },
       scales:{
         x:{display:false,grid:{display:false}},
-        y:{display:false,min:0,max:1.1,grid:{display:false}}
+        y:{display:false,min:0,max:1.15,grid:{display:false}}
       },
-      layout:{padding:{top:14,bottom:0}}
+      layout:{padding:{top:16,bottom:0}}
     }
   });
 
   // Legend
-  wrap.style.position='relative';
   const legend=wrap.querySelector('.ins-legend')||document.createElement('div');
   legend.className='ins-legend';
-  legend.style.cssText='position:absolute;bottom:2px;left:60px;display:flex;gap:14px;font-size:9px;color:rgba(180,178,190,0.7)';
-  legend.innerHTML=[['rgba(167,139,250,0.7)','Basal'],['rgba(77,159,255,0.88)','Manual bolus'],['rgba(0,212,160,0.65)','Auto bolus']].map(([c,l])=>`<span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:4px;background:${c};border-radius:1px;display:inline-block"></span>${l}</span>`).join('');
+  legend.style.cssText='position:absolute;bottom:2px;left:60px;display:flex;gap:14px;font-size:9px;color:rgba(180,178,190,0.7);pointer-events:none';
+  legend.innerHTML=[['rgba(167,139,250,0.7)','Basal'],['rgba(77,159,255,0.9)','Manual bolus'],['rgba(0,212,160,0.7)','Auto bolus']].map(([c,l])=>`<span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:4px;background:${c};border-radius:1px;display:inline-block"></span>${l}</span>`).join('');
   if(!wrap.querySelector('.ins-legend')) wrap.appendChild(legend);
 
-  // Left label
   const lbl=wrap.querySelector('.ins-label')||document.createElement('div');
   lbl.className='ins-label';
-  lbl.style.cssText='position:absolute;top:50%;left:4px;transform:translateY(-50%);font-size:9px;font-weight:600;color:rgba(200,195,215,0.4)';
+  lbl.style.cssText='position:absolute;top:50%;left:4px;transform:translateY(-50%);font-size:9px;font-weight:600;color:rgba(200,195,215,0.4);pointer-events:none';
   lbl.textContent='Insulin';
   if(!wrap.querySelector('.ins-label')) wrap.appendChild(lbl);
 }
@@ -1130,11 +1124,11 @@ function renderHourlyDiverging(cgm){
     data:{labels:blkLabels,datasets:[
       {label:'Highs',data:highBlocks,
        backgroundColor:'rgba(255,179,71,0.85)',borderRadius:3,borderSkipped:'bottom',
-       barPercentage:0.6,categoryPercentage:1.0,
+       barThickness:30,
        datalabels:{anchor:'end',align:'end',color:'rgba(255,179,71,0.95)',font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
       {label:'Lows',data:lowBlocks.map(v=>-v),
        backgroundColor:'rgba(255,77,109,0.85)',borderRadius:3,borderSkipped:'top',
-       barPercentage:0.6,categoryPercentage:1.0,
+       barThickness:30,
        datalabels:{anchor:'end',align:'start',color:'rgba(255,77,109,0.95)',font:{size:10,weight:'700'},formatter:v=>v<0?Math.abs(v):''}},
     ]},
     plugins:[zeroLinePlugin],
