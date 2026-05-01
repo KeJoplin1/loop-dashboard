@@ -197,7 +197,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
       <!-- Bolus pill strip — sits directly below the glucose chart -->
       <div id="bolus-strip" style="position:relative;width:100%;height:52px;margin-top:0"></div>
-      <div id="trace-stats" style="display:flex;gap:24px;padding:10px 2px 2px;flex-wrap:wrap"></div>
+      <!-- Insulin delivery lanes: basal rate + auto bolus + manual bolus -->
+      <div id="insulin-lanes" style="position:relative;width:100%;margin-top:4px"></div>
+
     </div>
     <div id="event-tooltip"></div>
 
@@ -483,10 +485,12 @@ function setTIRMode(mode,btn){
 
 function filterByDays(arr,days){
   if(customFrom&&customTo) return arr.filter(d=>d.t>=customFrom&&d.t<=customTo);
-  // Snap to start of day (midnight) so we get N complete days, not N*24h from now
-  const today=new Date();today.setHours(0,0,0,0);
-  const cutoff=new Date(today.getTime()-( (days-1)*86400000 ));
-  return arr.filter(d=>d.t>=cutoff);
+  // Anchor to last available CGM date, not today — handles gaps between data and current date
+  const lastDate=allCGM.length?new Date(allCGM[allCGM.length-1].t):new Date();
+  const anchor=new Date(lastDate);anchor.setHours(23,59,59,999);
+  const cutoff=new Date(anchor.getTime()-((days-1)*86400000));
+  cutoff.setHours(0,0,0,0);
+  return arr.filter(d=>d.t>=cutoff&&d.t<=anchor);
 }
 
 function renderAll(){
@@ -501,7 +505,8 @@ function renderAll(){
   document.getElementById('data-range').textContent=fmtDate(minT)+' — '+fmtDate(maxT)+' · '+filteredCGM.length+' readings';
   renderMetrics(filteredCGM,filteredBoluses,filteredBasals);
   renderGlucoseChart(filteredCGM);
-  renderTraceStats(filteredBoluses,filteredMeals);
+  if(currentDays<=7) renderInsulinLanes(filteredBoluses,filteredBasals,filteredCGM);
+  else{const el=document.getElementById('insulin-lanes');if(el)el.innerHTML='';}
   renderTIR(filteredCGM);
   renderHourlyAvg(filteredCGM);
   renderTDDChart(filteredBoluses,filteredBasals);
@@ -589,41 +594,158 @@ function renderMetrics(cgm,boluses,basals){
   `;
 }
 
-function renderTraceStats(boluses,meals){
-  const el=document.getElementById('trace-stats');
-  if(!el) return;
-  const days=new Set([...boluses.map(b=>dayKey(b.t)),...(meals||[]).map(m=>dayKey(m.t))]);
-  const nDays=Math.max(1,days.size);
-  const visBoluses=boluses.filter(b=>b.units>=0.5);
-  const bolusPerDay=(visBoluses.length/nDays).toFixed(1);
-  const mealsPerDay=meals&&meals.length?(meals.length/nDays).toFixed(1):'—';
-  const avgBolus=visBoluses.length?Math.round(visBoluses.reduce((s,b)=>s+b.units,0)/visBoluses.length*10)/10:0;
 
-  // Correction boluses: boluses ≥0.5u that do NOT fall within ±2h of any meal
-  const MEAL_WINDOW=2*60*60*1000; // 2 hours in ms
-  const correctionBoluses=visBoluses.filter(b=>{
-    if(!meals||!meals.length) return true; // no meal data — all are corrections
-    return !meals.some(m=>Math.abs(b.t.getTime()-m.t.getTime())<=MEAL_WINDOW);
+
+function renderInsulinLanes(boluses,basals,cgm){
+  const container=document.getElementById('insulin-lanes');
+  if(!container) return;
+  container.innerHTML='';
+  if(!cgm.length) return;
+
+  const minT=cgm[0].t.getTime();
+  const maxT=cgm[cgm.length-1].t.getTime();
+  const tRange=maxT-minT;
+  if(tRange===0) return;
+
+  // We need the chart's chartArea for x-alignment
+  // Use the glucose chart's chartArea if available
+  const chartArea=glucChart?.chartArea;
+  if(!chartArea) return;
+
+  const LEFT=chartArea.left;
+  const RIGHT=chartArea.right;
+  const W=RIGHT-LEFT;
+
+  const xOf=t=>LEFT+(t-minT)/tRange*W;
+  const svgNS='http://www.w3.org/2000/svg';
+
+  // Distinguish auto vs manual bolus by size threshold
+  const AUTO_THRESHOLD=0.5; // <0.5u = auto/micro, ≥0.5u = manual
+  const autoBoluses=boluses.filter(b=>b.units<AUTO_THRESHOLD);
+  const manualBoluses=boluses.filter(b=>b.units>=AUTO_THRESHOLD);
+
+  // Build basal rate timeline
+  const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
+  const maxRate=Math.max(...basalsSorted.map(b=>b.rate),1);
+
+  // Lane heights
+  const BASAL_H=28;
+  const BOLUS_H=22;
+  const LABEL_W=LEFT; // match chart left margin
+  const TOTAL_H=BASAL_H+BOLUS_H+8; // 8px gap
+
+  container.style.height=TOTAL_H+'px';
+
+  const svg=document.createElementNS(svgNS,'svg');
+  svg.setAttribute('width','100%');
+  svg.setAttribute('height',TOTAL_H);
+  svg.setAttribute('viewBox',`0 0 ${RIGHT+20} ${TOTAL_H}`);
+  svg.setAttribute('preserveAspectRatio','none');
+  svg.style.cssText='display:block;overflow:visible';
+
+  // ── BASAL LANE ──────────────────────────────────────────────
+  const BASAL_Y=0;
+
+  // Row bg
+  const basalBg=document.createElementNS(svgNS,'rect');
+  basalBg.setAttribute('x',LEFT);basalBg.setAttribute('y',BASAL_Y);
+  basalBg.setAttribute('width',W);basalBg.setAttribute('height',BASAL_H);
+  basalBg.setAttribute('fill','rgba(167,139,250,0.06)');basalBg.setAttribute('rx','3');
+  svg.appendChild(basalBg);
+
+  // Label
+  const basalLabel=document.createElementNS(svgNS,'text');
+  basalLabel.setAttribute('x',LEFT-4);basalLabel.setAttribute('y',BASAL_Y+BASAL_H/2+4);
+  basalLabel.setAttribute('text-anchor','end');basalLabel.setAttribute('fill','rgba(167,139,250,0.7)');
+  basalLabel.setAttribute('font-size','9');basalLabel.setAttribute('font-weight','600');
+  basalLabel.setAttribute('font-family','-apple-system,sans-serif');
+  basalLabel.textContent='Basal';
+  svg.appendChild(basalLabel);
+
+  // Draw basal rate as filled area
+  if(basalsSorted.length>1){
+    let pts=`${xOf(basalsSorted[0].t.getTime())},${BASAL_Y+BASAL_H} `;
+    basalsSorted.forEach((b,i)=>{
+      const x=xOf(b.t.getTime());
+      const y=BASAL_Y+BASAL_H-(b.rate/maxRate)*(BASAL_H-4);
+      pts+=`${x},${y} `;
+      if(i<basalsSorted.length-1){
+        const nx=xOf(basalsSorted[i+1].t.getTime());
+        pts+=`${nx},${y} `;
+      }
+    });
+    pts+=`${xOf(basalsSorted[basalsSorted.length-1].t.getTime())},${BASAL_Y+BASAL_H}`;
+    const area=document.createElementNS(svgNS,'polygon');
+    area.setAttribute('points',pts);
+    area.setAttribute('fill','rgba(167,139,250,0.35)');area.setAttribute('stroke','rgba(167,139,250,0.6)');area.setAttribute('stroke-width','1');
+    svg.appendChild(area);
+  }
+
+  // ── BOLUS LANE ──────────────────────────────────────────────
+  const BOLUS_Y=BASAL_H+8;
+  const maxManual=Math.max(...manualBoluses.map(b=>b.units),1);
+
+  const bolusLabel=document.createElementNS(svgNS,'text');
+  bolusLabel.setAttribute('x',LEFT-4);bolusLabel.setAttribute('y',BOLUS_Y+BOLUS_H/2+4);
+  bolusLabel.setAttribute('text-anchor','end');bolusLabel.setAttribute('fill','rgba(77,159,255,0.7)');
+  bolusLabel.setAttribute('font-size','9');bolusLabel.setAttribute('font-weight','600');
+  bolusLabel.setAttribute('font-family','-apple-system,sans-serif');
+  bolusLabel.textContent='Bolus';
+  svg.appendChild(bolusLabel);
+
+  // Auto boluses — thin teal tick marks at baseline
+  autoBoluses.forEach(b=>{
+    const bT=b.t.getTime();
+    if(bT<minT||bT>maxT) return;
+    const x=xOf(bT);
+    const h=Math.max(3,Math.round((b.units/0.5)*8)); // scale within auto range
+    const bar=document.createElementNS(svgNS,'rect');
+    bar.setAttribute('x',x-1);bar.setAttribute('y',BOLUS_Y+BOLUS_H-h);
+    bar.setAttribute('width',2);bar.setAttribute('height',h);
+    bar.setAttribute('fill','rgba(0,212,160,0.55)');bar.setAttribute('rx','1');
+    svg.appendChild(bar);
   });
-  const correctionsPerDay=(correctionBoluses.length/nDays).toFixed(1);
 
-  const statStyle='display:flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface2);border-radius:8px';
-  el.innerHTML=`
-    <div style="${statStyle}">
-      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Boluses/day</span>
-      <span style="font-size:16px;font-weight:700;color:#4d9fff">${bolusPerDay}</span>
-      <span style="font-size:10px;color:var(--text3)">avg ${avgBolus}u</span>
-    </div>
-    ${meals&&meals.length?`<div style="${statStyle}">
-      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Meals/day</span>
-      <span style="font-size:16px;font-weight:700;color:#f472b6">${mealsPerDay}</span>
-    </div>`:''}
-    <div style="${statStyle}">
-      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Corrections/day</span>
-      <span style="font-size:16px;font-weight:700;color:#f59e0b">${correctionsPerDay}</span>
-      <span style="font-size:10px;color:var(--text3)">outside ±2h meal</span>
-    </div>
-  `;
+  // Manual boluses — taller blue bars with label
+  manualBoluses.forEach(b=>{
+    const bT=b.t.getTime();
+    if(bT<minT||bT>maxT) return;
+    const x=xOf(bT);
+    const units=roundTenth(b.units);
+    const h=Math.max(8,Math.round((units/maxManual)*(BOLUS_H-6)));
+    const bar=document.createElementNS(svgNS,'rect');
+    bar.setAttribute('x',x-3);bar.setAttribute('y',BOLUS_Y+BOLUS_H-h);
+    bar.setAttribute('width',6);bar.setAttribute('height',h);
+    bar.setAttribute('fill','rgba(77,159,255,0.85)');bar.setAttribute('rx','2');
+    svg.appendChild(bar);
+    // Label above bar
+    const lbl=document.createElementNS(svgNS,'text');
+    lbl.setAttribute('x',x);lbl.setAttribute('y',BOLUS_Y+BOLUS_H-h-3);
+    lbl.setAttribute('text-anchor','middle');lbl.setAttribute('fill','#4d9fff');
+    lbl.setAttribute('font-size','8');lbl.setAttribute('font-weight','700');
+    lbl.setAttribute('font-family','-apple-system,sans-serif');
+    lbl.textContent=units+'u';
+    svg.appendChild(lbl);
+  });
+
+  // Legend
+  const legendY=TOTAL_H-2;
+  const leg=[['rgba(167,139,250,0.6)','Basal rate'],['rgba(77,159,255,0.85)','Manual bolus'],['rgba(0,212,160,0.6)','Auto bolus']];
+  let lx=LEFT;
+  leg.forEach(([color,label])=>{
+    const dot=document.createElementNS(svgNS,'rect');
+    dot.setAttribute('x',lx);dot.setAttribute('y',legendY-5);
+    dot.setAttribute('width',8);dot.setAttribute('height',5);dot.setAttribute('rx','1');
+    dot.setAttribute('fill',color);svg.appendChild(dot);
+    const lt=document.createElementNS(svgNS,'text');
+    lt.setAttribute('x',lx+11);lt.setAttribute('y',legendY);
+    lt.setAttribute('fill','rgba(150,150,158,0.8)');lt.setAttribute('font-size','9');
+    lt.setAttribute('font-family','-apple-system,sans-serif');
+    lt.textContent=label;svg.appendChild(lt);
+    lx+=label.length*6+20;
+  });
+
+  container.appendChild(svg);
 }
 
 function renderGlucoseChart(cgm){
@@ -1590,7 +1712,7 @@ function renderPostMealCurve(cgm,meals,boluses){
       ${delta?`<div><span style="color:var(--text3)">Avg rise</span><br><strong style="${peakCls}">+${delta} mg/dL</strong></div>`:''}
       ${peakMin!==null?`<div><span style="color:var(--text3)">Peak at</span><br><strong>+${peakMin}min</strong></div>`:''}
       ${returnMin?`<div><span style="color:var(--text3)">Returns ~</span><br><strong>+${returnMin}min</strong></div>`:''}
-      ${boluses&&totalBolusNearMeal>0?`<div><span style="color:var(--text3)">Avg bolus/meal</span><br><strong style="color:#4d9fff">${Math.round(totalBolusNearMeal*10)/10}u</strong></div>`:''}
+      ${boluses&&totalBolusNearMeal>0?`<div><span style="color:var(--text3)">Avg meal bolus</span><br><strong style="color:#4d9fff">${Math.round(totalBolusNearMeal*10)/10}u</strong></div>`:''}
     </div>`;
   }
 }
