@@ -829,17 +829,19 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   const svgNS='http://www.w3.org/2000/svg';
 
   // ── COORDINATE SYSTEM ────────────────────────────────────────────
-  // Canvas is 240px tall (top of container). SVG spans full 400px container.
-  // chartArea is relative to canvas top-left, which equals container top-left.
-  // Glucose zone: chartArea.top → chartArea.bottom (within 0–240px)
-  // Bolus pill zone: chartArea.bottom + 8  →  chartArea.bottom + 60
-  // Insulin lane: chartArea.bottom + 65  →  380px
+  // Container is 400px. Canvas 240px (top). SVG spans full 400px.
+  // We compress the x-axis tick area and push insulin lane below it.
+  // chartArea.bottom = bottom of glucose plot (~210px typically)
+  // X-axis label zone: chartArea.bottom → chartArea.bottom+30 (leave clear)
+  // Pill zone: chartArea.bottom + 32 → chartArea.bottom + 52
+  // Insulin lane: chartArea.bottom + 56 → 395px (grows upward from bottom)
   const GLUC_TOP = chartArea.top;
   const GLUC_BOT = chartArea.bottom;
-  const PILL_TOP = GLUC_BOT + 8;
-  const PILL_BOT = GLUC_BOT + 58;
-  const INS_TOP  = GLUC_BOT + 66;
-  const INS_BOT  = 385;
+  const XAXIS_CLEAR = GLUC_BOT + 32;   // x-axis labels live here — don't draw over it
+  const PILL_TOP = GLUC_BOT + 32;
+  const PILL_BOT = GLUC_BOT + 52;
+  const INS_TOP  = GLUC_BOT + 56;
+  const INS_BOT  = 395;
   const INS_H    = INS_BOT - INS_TOP;
 
   const xOf = t => chartArea.left + (t-minT)/tRange*(chartArea.right-chartArea.left);
@@ -897,69 +899,88 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
   }
 
   // ── INSULIN LANE ─────────────────────────────────────────────────
-  // Draw in INS_TOP→INS_BOT zone — basal filled area, then bolus bars over it
+  // Everything grows UPWARD from INS_BOT.
+  // Basal and auto-bolus are normalized on the same delivered-units scale
+  // so their heights are directly comparable.
   if(nDays<=7&&basals&&basals.length){
     const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
-    const maxRate=Math.max(...basalsSorted.map(b=>b.rate),0.1);
     const AUTO_THRESHOLD=0.5;
     const autoBoluses=boluses?boluses.filter(b=>b.units<AUTO_THRESHOLD):[];
     const manualBoluses=boluses?boluses.filter(b=>b.units>=AUTO_THRESHOLD):[];
-    const maxManual=Math.max(...(manualBoluses.map(b=>b.units)),1);
+
+    // Shared scale: max delivered units across basal segments and auto boluses
+    const maxDelivered=Math.max(
+      ...basalsSorted.map(b=>b.delivered||0),
+      ...autoBoluses.map(b=>b.units),
+      0.05
+    );
+    const maxManual=Math.max(...manualBoluses.map(b=>b.units),1);
+    const USABLE_H=INS_H*0.88; // leave headroom at top
 
     // Lane background
     const laneBg=document.createElementNS(svgNS,'rect');
     laneBg.setAttribute('x',chartArea.left);laneBg.setAttribute('y',INS_TOP);
     laneBg.setAttribute('width',chartArea.right-chartArea.left);laneBg.setAttribute('height',INS_H);
-    laneBg.setAttribute('fill','rgba(255,255,255,0.02)');laneBg.setAttribute('rx','2');
+    laneBg.setAttribute('fill','rgba(255,255,255,0.015)');laneBg.setAttribute('rx','2');
     overlay.appendChild(laneBg);
 
-    // Basal: filled step polygon from INS_BOT upward
+    // ── BASAL: filled step area growing UP from INS_BOT ──────────
     if(basalsSorted.length>1){
-      let pts=`${xOf(basalsSorted[0].t.getTime())},${INS_BOT} `;
-      basalsSorted.forEach((b,i)=>{
-        const x=xOf(b.t.getTime());
-        if(x<chartArea.left||x>chartArea.right) return;
-        const y=INS_BOT-(b.rate/maxRate)*(INS_H*0.7);
-        pts+=`${x},${y} `;
+      let pts=`${Math.max(xOf(basalsSorted[0].t.getTime()),chartArea.left)},${INS_BOT} `;
+      for(let i=0;i<basalsSorted.length;i++){
+        const b=basalsSorted[i];
+        const x=Math.min(Math.max(xOf(b.t.getTime()),chartArea.left),chartArea.right);
+        const delivered=b.delivered||0;
+        const y=INS_BOT-(delivered/maxDelivered)*USABLE_H; // UP from bottom
+        if(i===0) pts+=`${x},${y} `;
+        else {
+          // step: horizontal at prev height, then vertical to new height
+          const prevDelivered=basalsSorted[i-1].delivered||0;
+          const prevY=INS_BOT-(prevDelivered/maxDelivered)*USABLE_H;
+          pts+=`${x},${prevY} ${x},${y} `;
+        }
+        // extend to next segment start
         if(i<basalsSorted.length-1){
           const nx=Math.min(xOf(basalsSorted[i+1].t.getTime()),chartArea.right);
           pts+=`${nx},${y} `;
         }
-      });
+      }
       pts+=`${chartArea.right},${INS_BOT}`;
       const area=document.createElementNS(svgNS,'polygon');
       area.setAttribute('points',pts);
-      area.setAttribute('fill','rgba(167,139,250,0.22)');area.setAttribute('stroke','rgba(167,139,250,0.5)');
-      area.setAttribute('stroke-width','1');overlay.appendChild(area);
+      area.setAttribute('fill','rgba(167,139,250,0.28)');
+      area.setAttribute('stroke','rgba(167,139,250,0.65)');
+      area.setAttribute('stroke-width','1');
+      overlay.appendChild(area);
     }
 
-    // Auto boluses: teal bars growing up from INS_BOT
+    // ── AUTO BOLUSES: teal bars growing UP from INS_BOT, same scale ──
     autoBoluses.forEach(b=>{
       const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
       const x=xOf(bT);
-      const h=Math.max(3,Math.round((b.units/AUTO_THRESHOLD)*(INS_H*0.4)));
+      const h=Math.max(2,Math.round((b.units/maxDelivered)*USABLE_H));
       const bar=document.createElementNS(svgNS,'rect');
       bar.setAttribute('x',x-1.5);bar.setAttribute('y',INS_BOT-h);
       bar.setAttribute('width',3);bar.setAttribute('height',h);
-      bar.setAttribute('fill','rgba(0,212,160,0.55)');bar.setAttribute('rx','1');
+      bar.setAttribute('fill','rgba(0,212,160,0.60)');bar.setAttribute('rx','1');
       overlay.appendChild(bar);
     });
 
-    // Manual boluses: blue bars growing up from INS_BOT, with full-height guide line + pill
+    // ── MANUAL BOLUSES: blue bars + pill + guide line ─────────────
     manualBoluses.forEach(b=>{
       const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
       const x=xSnap(bT);
       const units=roundTenth(b.units);
 
-      // Full-height guide line from glucose area through insulin lane
-      const guideLine=document.createElementNS(svgNS,'line');
-      guideLine.setAttribute('x1',x);guideLine.setAttribute('y1',GLUC_TOP);
-      guideLine.setAttribute('x2',x);guideLine.setAttribute('y2',INS_BOT);
-      guideLine.setAttribute('stroke','rgba(77,159,255,0.15)');
-      guideLine.setAttribute('stroke-width','1');guideLine.setAttribute('stroke-dasharray','3,4');
-      overlay.appendChild(guideLine);
+      // Guide line: full height from glucose top through insulin lane
+      const gl=document.createElementNS(svgNS,'line');
+      gl.setAttribute('x1',x);gl.setAttribute('y1',GLUC_TOP);
+      gl.setAttribute('x2',x);gl.setAttribute('y2',INS_BOT);
+      gl.setAttribute('stroke','rgba(77,159,255,0.14)');
+      gl.setAttribute('stroke-width','1');gl.setAttribute('stroke-dasharray','3,4');
+      overlay.appendChild(gl);
 
-      // Glucose dot
+      // Glucose dot on trace
       const glucVal=glucAtTime(bT);
       if(glucVal!=null){
         const yG=yOfGluc(Math.min(Math.max(glucVal,40),225));
@@ -969,22 +990,22 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
         overlay.appendChild(bdot);
       }
 
-      // Blue bar in insulin lane
-      const barH=Math.max(10,Math.round((units/maxManual)*(INS_H*0.85)));
+      // Blue bar growing up from INS_BOT — scaled relative to manual max
+      const barH=Math.max(12,Math.round((units/maxManual)*USABLE_H));
       const bar=document.createElementNS(svgNS,'rect');
       bar.setAttribute('x',x-4);bar.setAttribute('y',INS_BOT-barH);
       bar.setAttribute('width',8);bar.setAttribute('height',barH);
-      bar.setAttribute('fill','rgba(77,159,255,0.85)');bar.setAttribute('rx','3');
+      bar.setAttribute('fill','rgba(77,159,255,0.88)');bar.setAttribute('rx','3');
       overlay.appendChild(bar);
 
-      // Pill label in pill zone
+      // Pill label in pill zone (between x-axis and insulin lane)
       const label=units+'u';
-      const PW=Math.max(26,label.length*6+12);const PH=17;
-      const PY=PILL_TOP+4;
+      const PW=Math.max(26,label.length*6+12);const PH=16;
+      const PY=PILL_TOP+2;
       const pill=document.createElementNS(svgNS,'rect');
       pill.setAttribute('x',x-PW/2);pill.setAttribute('y',PY);
       pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(10,20,40,0.88)');
+      pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(10,20,40,0.9)');
       pill.setAttribute('stroke',BOLUS_COLOR);pill.setAttribute('stroke-width','1.5');
       overlay.appendChild(pill);
       const lt=document.createElementNS(svgNS,'text');
@@ -996,17 +1017,16 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       eventList.push({xPx:x,type:'bolus',units,t:b.t});
     });
 
-    // Lane label
-    const lbl=document.createElementNS(svgNS,'text');
-    lbl.setAttribute('x',chartArea.left-4);lbl.setAttribute('y',(INS_TOP+INS_BOT)/2+4);
-    lbl.setAttribute('text-anchor','end');lbl.setAttribute('fill','rgba(200,195,215,0.45)');
-    lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','600');
-    lbl.setAttribute('font-family','-apple-system,sans-serif');
-    lbl.textContent='Insulin';overlay.appendChild(lbl);
+    // Lane label + legend
+    const insLabel=document.createElementNS(svgNS,'text');
+    insLabel.setAttribute('x',chartArea.left-4);insLabel.setAttribute('y',(INS_TOP+INS_BOT)/2+4);
+    insLabel.setAttribute('text-anchor','end');insLabel.setAttribute('fill','rgba(200,195,215,0.4)');
+    insLabel.setAttribute('font-size','9');insLabel.setAttribute('font-weight','600');
+    insLabel.setAttribute('font-family','-apple-system,sans-serif');
+    insLabel.textContent='Insulin';overlay.appendChild(insLabel);
 
-    // Legend
-    const leg=[[BASAL_COLOR,'Basal'],[BOLUS_COLOR,'Manual'],[AUTO_COLOR,'Auto']];
-    let lx=chartArea.left;const legY=INS_BOT+11;
+    const leg=[[BASAL_COLOR,'Basal'],[BOLUS_COLOR,'Manual bolus'],[AUTO_COLOR,'Auto bolus']];
+    let lx=chartArea.left;const legY=INS_BOT+12;
     leg.forEach(([color,label])=>{
       const dot=document.createElementNS(svgNS,'rect');
       dot.setAttribute('x',lx);dot.setAttribute('y',legY-5);dot.setAttribute('width',8);dot.setAttribute('height',4);dot.setAttribute('rx','1');dot.setAttribute('fill',color);overlay.appendChild(dot);
@@ -1016,6 +1036,7 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       lt.setAttribute('font-family','-apple-system,sans-serif');lt.textContent=label;overlay.appendChild(lt);
       lx+=label.length*5.5+18;
     });
+
   } else if(nDays>7&&boluses){
     // Multi-day: just draw manual bolus guide lines + pills (no insulin lane)
     boluses.filter(b=>b.units>=0.5).forEach(b=>{
