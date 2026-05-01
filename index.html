@@ -607,120 +607,114 @@ function renderInsulinLanes(boluses,basals,cgm){
   const tRange=maxT-minT;
   if(tRange===0) return;
 
-  // We need the chart's chartArea for x-alignment
-  // Use the glucose chart's chartArea if available
   const chartArea=glucChart?.chartArea;
   if(!chartArea) return;
 
   const LEFT=chartArea.left;
   const RIGHT=chartArea.right;
   const W=RIGHT-LEFT;
-
   const xOf=t=>LEFT+(t-minT)/tRange*W;
   const svgNS='http://www.w3.org/2000/svg';
 
-  // Distinguish auto vs manual bolus by size threshold
-  const AUTO_THRESHOLD=0.5; // <0.5u = auto/micro, ≥0.5u = manual
+  const AUTO_THRESHOLD=0.5;
   const autoBoluses=boluses.filter(b=>b.units<AUTO_THRESHOLD);
   const manualBoluses=boluses.filter(b=>b.units>=AUTO_THRESHOLD);
-
-  // Build basal rate timeline
   const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
-  const maxRate=Math.max(...basalsSorted.map(b=>b.rate),1);
+  const maxRate=Math.max(...basalsSorted.map(b=>b.rate),0.1);
+  const maxManual=Math.max(...manualBoluses.map(b=>b.units),1);
 
-  // Lane heights
-  const BASAL_H=28;
-  const BOLUS_H=22;
-  const LABEL_W=LEFT; // match chart left margin
-  const TOTAL_H=BASAL_H+BOLUS_H+8; // 8px gap
-
-  container.style.height=TOTAL_H+'px';
+  // Single unified lane height
+  const LANE_H=56;
+  const LABEL_W=LEFT;
+  container.style.height=LANE_H+'px';
 
   const svg=document.createElementNS(svgNS,'svg');
   svg.setAttribute('width','100%');
-  svg.setAttribute('height',TOTAL_H);
-  svg.setAttribute('viewBox',`0 0 ${RIGHT+20} ${TOTAL_H}`);
+  svg.setAttribute('height',LANE_H);
+  svg.setAttribute('viewBox',`0 0 ${RIGHT+20} ${LANE_H}`);
   svg.setAttribute('preserveAspectRatio','none');
   svg.style.cssText='display:block;overflow:visible';
 
-  // ── BASAL LANE ──────────────────────────────────────────────
-  const BASAL_Y=0;
+  // Lane background
+  const bg=document.createElementNS(svgNS,'rect');
+  bg.setAttribute('x',LEFT);bg.setAttribute('y',0);
+  bg.setAttribute('width',W);bg.setAttribute('height',LANE_H);
+  bg.setAttribute('fill','rgba(255,255,255,0.02)');bg.setAttribute('rx','3');
+  svg.appendChild(bg);
 
-  // Row bg
-  const basalBg=document.createElementNS(svgNS,'rect');
-  basalBg.setAttribute('x',LEFT);basalBg.setAttribute('y',BASAL_Y);
-  basalBg.setAttribute('width',W);basalBg.setAttribute('height',BASAL_H);
-  basalBg.setAttribute('fill','rgba(167,139,250,0.06)');basalBg.setAttribute('rx','3');
-  svg.appendChild(basalBg);
+  // ── BASAL as filled area + line at bottom portion of lane ──────
+  const BASAL_MAX_H=LANE_H*0.55;  // basal area uses bottom 55% of lane
+  const BASE_Y=LANE_H;            // baseline = bottom of lane
 
-  // Label
-  const basalLabel=document.createElementNS(svgNS,'text');
-  basalLabel.setAttribute('x',LEFT-4);basalLabel.setAttribute('y',BASAL_Y+BASAL_H/2+4);
-  basalLabel.setAttribute('text-anchor','end');basalLabel.setAttribute('fill','rgba(167,139,250,0.7)');
-  basalLabel.setAttribute('font-size','9');basalLabel.setAttribute('font-weight','600');
-  basalLabel.setAttribute('font-family','-apple-system,sans-serif');
-  basalLabel.textContent='Basal';
-  svg.appendChild(basalLabel);
-
-  // Draw basal rate as filled area
   if(basalsSorted.length>1){
-    let pts=`${xOf(basalsSorted[0].t.getTime())},${BASAL_Y+BASAL_H} `;
+    // Build polygon points for filled area
+    let pts=`${xOf(basalsSorted[0].t.getTime())},${BASE_Y} `;
     basalsSorted.forEach((b,i)=>{
       const x=xOf(b.t.getTime());
-      const y=BASAL_Y+BASAL_H-(b.rate/maxRate)*(BASAL_H-4);
+      const y=BASE_Y-(b.rate/maxRate)*BASAL_MAX_H;
       pts+=`${x},${y} `;
+      // Step to next segment at same height
       if(i<basalsSorted.length-1){
         const nx=xOf(basalsSorted[i+1].t.getTime());
         pts+=`${nx},${y} `;
       }
     });
-    pts+=`${xOf(basalsSorted[basalsSorted.length-1].t.getTime())},${BASAL_Y+BASAL_H}`;
+    const lastX=xOf(basalsSorted[basalsSorted.length-1].t.getTime());
+    pts+=`${lastX},${BASE_Y}`;
+
     const area=document.createElementNS(svgNS,'polygon');
     area.setAttribute('points',pts);
-    area.setAttribute('fill','rgba(167,139,250,0.35)');area.setAttribute('stroke','rgba(167,139,250,0.6)');area.setAttribute('stroke-width','1');
+    area.setAttribute('fill','rgba(167,139,250,0.25)');
     svg.appendChild(area);
+
+    // Basal rate line on top of area
+    let d=`M ${xOf(basalsSorted[0].t.getTime())} ${BASE_Y-(basalsSorted[0].rate/maxRate)*BASAL_MAX_H}`;
+    basalsSorted.forEach((b,i)=>{
+      const x=xOf(b.t.getTime());
+      const y=BASE_Y-(b.rate/maxRate)*BASAL_MAX_H;
+      if(i>0){
+        // step function
+        const prevX=xOf(basalsSorted[i-1].t.getTime());
+        const prevY=BASE_Y-(basalsSorted[i-1].rate/maxRate)*BASAL_MAX_H;
+        d+=` L ${x} ${prevY} L ${x} ${y}`;
+      }
+    });
+    const line=document.createElementNS(svgNS,'path');
+    line.setAttribute('d',d);
+    line.setAttribute('fill','none');
+    line.setAttribute('stroke','rgba(167,139,250,0.7)');
+    line.setAttribute('stroke-width','1.5');
+    svg.appendChild(line);
   }
 
-  // ── BOLUS LANE ──────────────────────────────────────────────
-  const BOLUS_Y=BASAL_H+8;
-  const maxManual=Math.max(...manualBoluses.map(b=>b.units),1);
-
-  const bolusLabel=document.createElementNS(svgNS,'text');
-  bolusLabel.setAttribute('x',LEFT-4);bolusLabel.setAttribute('y',BOLUS_Y+BOLUS_H/2+4);
-  bolusLabel.setAttribute('text-anchor','end');bolusLabel.setAttribute('fill','rgba(77,159,255,0.7)');
-  bolusLabel.setAttribute('font-size','9');bolusLabel.setAttribute('font-weight','600');
-  bolusLabel.setAttribute('font-family','-apple-system,sans-serif');
-  bolusLabel.textContent='Bolus';
-  svg.appendChild(bolusLabel);
-
-  // Auto boluses — thin teal tick marks at baseline
+  // ── AUTO BOLUSES — thin teal ticks growing down from top ───────
   autoBoluses.forEach(b=>{
     const bT=b.t.getTime();
     if(bT<minT||bT>maxT) return;
     const x=xOf(bT);
-    const h=Math.max(3,Math.round((b.units/0.5)*8)); // scale within auto range
+    const h=Math.max(2,Math.round((b.units/AUTO_THRESHOLD)*10));
     const bar=document.createElementNS(svgNS,'rect');
-    bar.setAttribute('x',x-1);bar.setAttribute('y',BOLUS_Y+BOLUS_H-h);
+    bar.setAttribute('x',x-1);bar.setAttribute('y',0);
     bar.setAttribute('width',2);bar.setAttribute('height',h);
-    bar.setAttribute('fill','rgba(0,212,160,0.55)');bar.setAttribute('rx','1');
+    bar.setAttribute('fill','rgba(0,212,160,0.45)');bar.setAttribute('rx','1');
     svg.appendChild(bar);
   });
 
-  // Manual boluses — taller blue bars with label
+  // ── MANUAL BOLUSES — blue bars growing down from top ───────────
   manualBoluses.forEach(b=>{
     const bT=b.t.getTime();
     if(bT<minT||bT>maxT) return;
     const x=xOf(bT);
     const units=roundTenth(b.units);
-    const h=Math.max(8,Math.round((units/maxManual)*(BOLUS_H-6)));
+    const h=Math.max(10,Math.round((units/maxManual)*(LANE_H*0.8)));
     const bar=document.createElementNS(svgNS,'rect');
-    bar.setAttribute('x',x-3);bar.setAttribute('y',BOLUS_Y+BOLUS_H-h);
+    bar.setAttribute('x',x-3);bar.setAttribute('y',0);
     bar.setAttribute('width',6);bar.setAttribute('height',h);
     bar.setAttribute('fill','rgba(77,159,255,0.85)');bar.setAttribute('rx','2');
     svg.appendChild(bar);
-    // Label above bar
+    // Unit label below bar
     const lbl=document.createElementNS(svgNS,'text');
-    lbl.setAttribute('x',x);lbl.setAttribute('y',BOLUS_Y+BOLUS_H-h-3);
+    lbl.setAttribute('x',x);lbl.setAttribute('y',Math.min(h+9,LANE_H-2));
     lbl.setAttribute('text-anchor','middle');lbl.setAttribute('fill','#4d9fff');
     lbl.setAttribute('font-size','8');lbl.setAttribute('font-weight','700');
     lbl.setAttribute('font-family','-apple-system,sans-serif');
@@ -728,10 +722,20 @@ function renderInsulinLanes(boluses,basals,cgm){
     svg.appendChild(lbl);
   });
 
-  // Legend
-  const legendY=TOTAL_H-2;
-  const leg=[['rgba(167,139,250,0.6)','Basal rate'],['rgba(77,159,255,0.85)','Manual bolus'],['rgba(0,212,160,0.6)','Auto bolus']];
+  // ── LABELS ─────────────────────────────────────────────────────
+  // Left-side lane label
+  const laneLabel=document.createElementNS(svgNS,'text');
+  laneLabel.setAttribute('x',LEFT-4);laneLabel.setAttribute('y',LANE_H/2+4);
+  laneLabel.setAttribute('text-anchor','end');laneLabel.setAttribute('fill','rgba(200,200,210,0.5)');
+  laneLabel.setAttribute('font-size','9');laneLabel.setAttribute('font-weight','600');
+  laneLabel.setAttribute('font-family','-apple-system,sans-serif');
+  laneLabel.textContent='Insulin';
+  svg.appendChild(laneLabel);
+
+  // Bottom legend
+  const leg=[['rgba(167,139,250,0.7)','Basal'],['rgba(77,159,255,0.85)','Manual bolus'],['rgba(0,212,160,0.55)','Auto bolus']];
   let lx=LEFT;
+  const legendY=LANE_H+10;
   leg.forEach(([color,label])=>{
     const dot=document.createElementNS(svgNS,'rect');
     dot.setAttribute('x',lx);dot.setAttribute('y',legendY-5);
@@ -739,11 +743,16 @@ function renderInsulinLanes(boluses,basals,cgm){
     dot.setAttribute('fill',color);svg.appendChild(dot);
     const lt=document.createElementNS(svgNS,'text');
     lt.setAttribute('x',lx+11);lt.setAttribute('y',legendY);
-    lt.setAttribute('fill','rgba(150,150,158,0.8)');lt.setAttribute('font-size','9');
+    lt.setAttribute('fill','rgba(130,130,138,0.8)');lt.setAttribute('font-size','9');
     lt.setAttribute('font-family','-apple-system,sans-serif');
     lt.textContent=label;svg.appendChild(lt);
-    lx+=label.length*6+20;
+    lx+=label.length*5.5+20;
   });
+
+  // Expand container height to include legend
+  container.style.height=(LANE_H+14)+'px';
+  svg.setAttribute('height',LANE_H+14);
+  svg.setAttribute('viewBox',`0 0 ${RIGHT+20} ${LANE_H+14}`);
 
   container.appendChild(svg);
 }
@@ -1622,9 +1631,9 @@ function renderPostMealCurve(cgm,meals,boluses){
       const near=relevantCGM.reduce((best,d)=>Math.abs(d.t.getTime()-target)<Math.abs(best.t.getTime()-target)?d:best,relevantCGM[0]);
       if(Math.abs(near.t.getTime()-target)<8*60000) glucBuckets[min].push(near.v);
     }
-    // Accumulate boluses within this meal's window
+    // Accumulate manual boluses (≥0.5u) within this meal's window only
     if(boluses){
-      boluses.forEach(b=>{
+      boluses.filter(b=>b.units>=0.5).forEach(b=>{
         const offset=(b.t.getTime()-mT)/60000;
         // snap to nearest bucket
         const bucket=Math.round(offset/STEP)*STEP;
