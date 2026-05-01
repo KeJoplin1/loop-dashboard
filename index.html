@@ -185,8 +185,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-bolus" onchange="renderGlucoseChart(filteredCGM)" checked> Bolus markers</label>
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
+<label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked> Exercise</label>
       </div>
       <!-- Glucose chart -->
@@ -194,10 +193,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
         <svg id="bolus-overlay" class="bolus-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:all;overflow:visible"></svg>
       </div>
-      <!-- Bolus pill strip -->
-      <div id="bolus-strip" style="position:relative;width:100%;height:48px"></div>
-      <!-- Insulin lane: separate Chart.js chart sharing same x-axis -->
-      <div id="insulin-lane-wrap" style="position:relative;width:100%;height:90px;margin-top:2px">
+      <!-- Insulin lane -->
+      <div id="insulin-lane-wrap" style="position:relative;width:100%;height:130px;margin-top:2px">
         <canvas id="insulinChart" role="img" aria-label="Insulin delivery"></canvas>
       </div>
 
@@ -683,10 +680,15 @@ function renderInsulinLanes(boluses,basals,cgm){
         }}
       },
       scales:{
-        x:{display:false,grid:{display:false}},
-        y:{display:false,min:0,max:1.15,grid:{display:false}}
+        x:{display:true,ticks:{maxTicksLimit:10,color:'#505058',font:{size:9},maxRotation:0},grid:{color:'rgba(255,255,255,0.03)'}},
+        y:{display:true,position:'left',min:0,max:1.15,
+          ticks:{color:'#505058',font:{size:8},callback:(v,i,vals)=>{
+            // Show actual u/hr for basal scale
+            return (v*maxRate).toFixed(1)+'u';
+          }},
+          grid:{color:'rgba(255,255,255,0.03)'}}
       },
-      layout:{padding:{top:16,bottom:0}}
+      layout:{padding:{top:20,bottom:0}}
     }
   });
 
@@ -710,7 +712,6 @@ function renderGlucoseChart(cgm){
   const grid='rgba(255,255,255,0.05)';
   const showBand=document.getElementById('show-band')?.checked;
   const showDots=document.getElementById('show-dots')?.checked;
-  const showBolus=document.getElementById('show-bolus')?.checked&&currentDays<=7;
   const showMeals=document.getElementById('show-meals')?.checked&&currentDays<=7;
   const showExercise=document.getElementById('show-exercise')?.checked&&currentDays<=7;
   const maxPts=600;const step=cgm.length>maxPts?Math.floor(cgm.length/maxPts):1;
@@ -751,7 +752,7 @@ function renderGlucoseChart(cgm){
         y:{min:40,max:225,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
       },
       animation:{onComplete:()=>{
-        renderEventOverlay(glucChart,s,showBolus,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise);
+        renderEventOverlay(glucChart,s,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise);
       }}
     }
   });
@@ -760,14 +761,12 @@ function renderGlucoseChart(cgm){
 // ── Round to nearest 0.1 ────────────────────────────────────────────
 function roundTenth(v){return Math.round(v*10)/10;}
 
-function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,meals,boluses,exercise){
+function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluses,exercise){
   const overlay=document.getElementById('bolus-overlay');
   if(!overlay||!chart) return;
   overlay.innerHTML='';
 
-  // Clear old bolus-strip (now unused)
-  const strip=document.getElementById('bolus-strip');
-  if(strip) strip.innerHTML='';
+  
 
   const {chartArea}=chart;
   if(!chartArea) return;
@@ -839,33 +838,6 @@ function renderEventOverlay(chart,cgmSampled,showBolus,showMeals,showExercise,me
       lbl.textContent='🏃 '+Math.round(ex.dur)+'m';overlay.appendChild(lbl);
       eventList.push({xPx:x1,type:'exercise',name:ex.name,dur:ex.dur,t:ex.t});
     });
-  }
-
-  // ── BOLUS PILLS in strip (rendered into #bolus-strip via separate SVG) ──
-  if(boluses){
-    const strip=document.getElementById('bolus-strip');
-    if(strip){
-      strip.innerHTML='';
-      const svgS=document.createElementNS(svgNS,'svg');
-      svgS.style.cssText='width:100%;height:100%;display:block;overflow:visible';
-      const visB=boluses.filter(b=>b.units>=0.5);
-      visB.forEach(b=>{
-        const bT=b.t.getTime();if(bT<minT||bT>maxT) return;
-        const x=xSnap(bT);const units=roundTenth(b.units);const label=units+'u';
-        const PW=Math.max(26,label.length*6+12),PH=17,PY=4;
-        const pill=document.createElementNS(svgNS,'rect');
-        pill.setAttribute('x',x-PW/2);pill.setAttribute('y',PY);pill.setAttribute('width',PW);pill.setAttribute('height',PH);
-        pill.setAttribute('rx','5');pill.setAttribute('fill','rgba(10,20,40,0.9)');
-        pill.setAttribute('stroke','#4d9fff');pill.setAttribute('stroke-width','1.5');
-        svgS.appendChild(pill);
-        const lt=document.createElementNS(svgNS,'text');
-        lt.setAttribute('x',x);lt.setAttribute('y',PY+PH-4);lt.setAttribute('text-anchor','middle');
-        lt.setAttribute('fill','#4d9fff');lt.setAttribute('font-size','9');lt.setAttribute('font-weight','700');
-        lt.setAttribute('font-family','-apple-system,sans-serif');lt.textContent=label;svgS.appendChild(lt);
-        eventList.push({xPx:x,type:'bolus',units,t:b.t});
-      });
-      strip.appendChild(svgS);
-    }
   }
 
   // ── MEAL PILLS + LINES ───────────────────────────────────────────
@@ -1100,36 +1072,41 @@ function renderHourlyDiverging(cgm){
     if(d.v<LOW) lowBlocks[blk]++;
     if(d.v>HIGH_TIR) highBlocks[blk]++;
   });
-  // Lows as negative, highs as positive
+  const maxVal=Math.max(...lowBlocks,...highBlocks,1);
+  const roundedMax=Math.ceil(maxVal/5)*5||5;
   const grid='rgba(255,255,255,0.05)';
+
+  // Single dataset: highs positive, lows negative — both centered on same x
+  // Use two separate datasets with barThickness so they share the same center pixel
   const zeroLinePlugin={
     id:'zeroLine',
     afterDraw(chart){
       const{ctx,chartArea:{left,right},scales:{y}}=chart;
       const yZero=y.getPixelForValue(0);
       ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(left,yZero);ctx.lineTo(right,yZero);
-      ctx.strokeStyle='rgba(255,255,255,0.25)';
-      ctx.lineWidth=1.5;
-      ctx.stroke();
+      ctx.beginPath();ctx.moveTo(left,yZero);ctx.lineTo(right,yZero);
+      ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1.5;ctx.stroke();
       ctx.restore();
     }
   };
-  const rawMax=Math.max(...lowBlocks,...highBlocks,1);
-  // Round up to a clean integer so Chart.js doesn't produce float tick labels
-  const maxVal=Math.ceil(rawMax/5)*5||5;  // round up to nearest 5
+
   hourlyDivergingChart=new Chart(canvas,{
     type:'bar',
     data:{labels:blkLabels,datasets:[
       {label:'Highs',data:highBlocks,
-       backgroundColor:'rgba(255,179,71,0.85)',borderRadius:3,borderSkipped:'bottom',
-       barThickness:30,
-       datalabels:{anchor:'end',align:'end',color:'rgba(255,179,71,0.95)',font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
+       backgroundColor:highBlocks.map(v=>v===0?'rgba(255,179,71,0.15)':'rgba(255,179,71,0.88)'),
+       borderRadius:{topLeft:3,topRight:3,bottomLeft:0,bottomRight:0},
+       borderSkipped:false,
+       barThickness:32,
+       base:0,
+       datalabels:{anchor:'end',align:'end',color:'rgba(255,179,71,0.9)',font:{size:10,weight:'700'},formatter:v=>v>0?v:''}},
       {label:'Lows',data:lowBlocks.map(v=>-v),
-       backgroundColor:'rgba(255,77,109,0.85)',borderRadius:3,borderSkipped:'top',
-       barThickness:30,
-       datalabels:{anchor:'end',align:'start',color:'rgba(255,77,109,0.95)',font:{size:10,weight:'700'},formatter:v=>v<0?Math.abs(v):''}},
+       backgroundColor:lowBlocks.map(v=>v===0?'rgba(255,77,109,0.15)':'rgba(255,77,109,0.88)'),
+       borderRadius:{topLeft:0,topRight:0,bottomLeft:3,bottomRight:3},
+       borderSkipped:false,
+       barThickness:32,
+       base:0,
+       datalabels:{anchor:'end',align:'start',color:'rgba(255,77,109,0.9)',font:{size:10,weight:'700'},formatter:v=>v<0?Math.abs(v):''}},
     ]},
     plugins:[zeroLinePlugin],
     options:{responsive:true,maintainAspectRatio:false,
@@ -1139,13 +1116,12 @@ function renderHourlyDiverging(cgm){
         tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+Math.abs(ctx.parsed.y)+' readings'}}
       },
       scales:{
-        x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false},
-           offset:false},
+        x:{ticks:{color:'#505058',font:{size:10},maxRotation:0},grid:{display:false}},
         y:{
           ticks:{color:'#505058',font:{size:9},callback:v=>Math.abs(v)},
           grid:{color:grid},
-          min:-Math.ceil(maxVal*1.3),max:Math.ceil(maxVal*1.3),
-          stepSize:Math.max(1,Math.ceil(maxVal/4))
+          min:-Math.ceil(roundedMax*1.3),
+          max:Math.ceil(roundedMax*1.3)
         }
       },
       layout:{padding:{top:20,bottom:4}}
