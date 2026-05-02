@@ -525,7 +525,7 @@ function renderAll(){
   safe(()=>renderMetrics(filteredCGM,filteredBoluses,filteredBasals),'renderMetrics');
   safe(()=>renderGlucoseChart(filteredCGM),'renderGlucoseChart');
   const ilw=document.getElementById('insulin-lane-wrap');
-  if(currentDays<=7){if(ilw)ilw.style.display='block';safe(()=>renderInsulinLanes(filteredBoluses,filteredBasals,filteredCGM),'renderInsulinLanes');}else{if(ilw)ilw.style.display='none';}
+  if(ilw) ilw.style.display='none';
   safe(()=>renderTIR(filteredCGM),'renderTIR');
   safe(()=>renderHourlyAvg(filteredCGM),'renderHourlyAvg');
   safe(()=>renderTDDChart(filteredBoluses,filteredBasals),'renderTDDChart');
@@ -777,6 +777,8 @@ function renderGlucoseChart(cgm){
       },
       animation:{onComplete:()=>{
         renderEventOverlay(glucChart,s,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise);
+        // Render insulin in same SVG overlay after glucChart is ready
+        if(currentDays<=7) renderInsulinLanes(filteredBoluses,filteredBasals,filteredCGM);
         // Store glucose tick timestamps for insulin chart alignment
         window._glucTicks=glucChart.scales.x.ticks.map(t=>({label:t.label,value:t.value}));
       }}
