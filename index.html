@@ -190,7 +190,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked><span style="width:10px;height:8px;background:rgba(103,232,249,0.35);border:1px solid #67e8f9;border-radius:2px;display:inline-block"></span>Exercise</label>
         <span style="color:rgba(255,255,255,0.15);margin:0 2px">|</span>
         <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:18px;height:6px;background:rgba(167,139,250,0.55);border-radius:2px;display:inline-block"></span>Basal</span>
-        <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:14px;background:rgba(77,159,255,0.85);border-radius:2px;display:inline-block"></span>Bolus</span>
+        <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:14px;background:rgba(0,212,160,0.85);border-radius:2px;display:inline-block"></span>Bolus</span>
       </div>
       <!-- Glucose chart -->
       <div id="chart-container" style="position:relative;width:100%;height:240px">
@@ -241,10 +241,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="two-col">
       <div class="card">
-        <div class="card-title">Overnight vs daytime glucose</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Avg glucose by hour of day · 🌙 overnight (10pm–6am) vs ☀️ daytime</div>
-        <div style="position:relative;width:100%;height:200px"><canvas id="overnightChart" role="img" aria-label="Overnight vs daytime"></canvas></div>
-        <div id="overnight-stats" style="margin-top:10px"></div>
+        <div class="card-title">Overnight vs daytime</div>
+        <div id="overnight-display" style="width:100%"></div>
         <div id="insight-overnight" style="margin-top:8px"></div>
       </div>
       <div class="card">
@@ -609,7 +607,7 @@ function renderMetrics(cgm,boluses,basals){
       <div class="metrics-row">
         <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
         <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-        ${currentDays>1?`<div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:var(--blue)">${pBolus}%</span><span class="unit"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>`:''}
+
       </div>
     </div>
   `;
@@ -724,33 +722,50 @@ function renderInsulinLanes(boluses,basals,cgm){
 
 
 
-  // Hover tooltip
+  // Hover tooltip — uses global event-tooltip element, same as glucose chart
   canvas.addEventListener('mousemove',e=>{
-    const rect=canvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left;
     const chart=window._insulinChart;
     if(!chart?.chartArea) return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left;
     const{chartArea:{left,right},scales:{x}}=chart;
-    if(mx<left||mx>right){chart._hoverIdx=null;chart.draw();hideInsTooltip();return;}
+    if(mx<left||mx>right){
+      document.getElementById('event-tooltip').style.display='none';
+      chart._hoverIdx=null;chart.draw();return;
+    }
+    // Find nearest sampled index by pixel distance
     let bi=0,bd=Infinity;
-    sampled.forEach((_,i)=>{const d=Math.abs(x.getPixelForValue(i)-mx);if(d<bd){bd=d;bi=i;}});
+    for(let i=0;i<sampled.length;i++){
+      const d=Math.abs(x.getPixelForValue(i)-mx);
+      if(d<bd){bd=d;bi=i;}
+    }
     chart._hoverIdx=bi;chart.draw();
+
     const d=sampled[bi];
     const timeStr=d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    // Find nearest glucose reading
+
+    // Nearest CGM glucose value
     let nearGluc=null,nearGD=Infinity;
-    filteredCGM.forEach(g=>{const dd=Math.abs(g.t-d.t);if(dd<nearGD){nearGD=dd;nearGluc=g;}});
+    (filteredCGM||[]).forEach(g=>{const dd=Math.abs(g.t-d.t);if(dd<nearGD){nearGD=dd;nearGluc=g;}});
+
+    const gc=nearGluc?(nearGluc.v<LOW?'#ff4d6d':nearGluc.v>HIGH?'#ffb347':'#00d4a0'):'#00d4a0';
     let html=`<div class="tt-time">${timeStr}</div>`;
-    if(nearGluc){
-      const gc=nearGluc.v<LOW?'#ff4d6d':nearGluc.v>HIGH?'#ffb347':'#00d4a0';
-      html+=`<div class="tt-gluc" style="color:${gc}">${nearGluc.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
-    }
+    if(nearGluc) html+=`<div class="tt-gluc" style="color:${gc}">${nearGluc.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
     html+=`<div class="tt-row"><span style="color:#a78bfa">▬ Basal ${basalData[bi].toFixed(2)}u/hr</span></div>`;
-    if(bolusArr[bi]>0) html+=`<div class="tt-row"><span style="color:#4d9fff">💉 Bolus ${roundTenth(bolusArr[bi])}u</span></div>`;
-    showInsTooltip(e.clientX,e.clientY,html);
+    if(bolusArr[bi]>0) html+=`<div class="tt-row"><span style="color:#00d4a0">💉 Bolus ${roundTenth(bolusArr[bi])}u</span></div>`;
+
+    const tt=document.getElementById('event-tooltip');
+    if(!tt) return;
+    tt.innerHTML=html;
+    const tw=tt.offsetWidth||140,th=tt.offsetHeight||70;
+    let tl=e.clientX-tw/2,tt2=e.clientY-th-16;
+    tl=Math.max(8,Math.min(tl,window.innerWidth-tw-8));
+    tt2=Math.max(8,tt2);
+    tt.style.left=tl+'px';tt.style.top=tt2+'px';tt.style.display='block';
   });
   canvas.addEventListener('mouseleave',()=>{
-    hideInsTooltip();
+    const tt=document.getElementById('event-tooltip');
+    if(tt) tt.style.display='none';
     if(window._insulinChart){window._insulinChart._hoverIdx=null;window._insulinChart.draw();}
   });
 }
@@ -1290,79 +1305,108 @@ function tirBar(tir,low,high,n){
 
 function renderOvernightVsDaytime(cgm){
   if(window.overnightChart instanceof Chart) window.overnightChart.destroy();
-  const canvas=document.getElementById('overnightChart');
-  const statsEl=document.getElementById('overnight-stats');
-  if(!canvas||!cgm.length) return;
+  const el=document.getElementById('overnight-display');
+  if(!el||!cgm.length) return;
   const HIGH_TIR=tirMode==='tight'?140:HIGH;
 
-  // Reorder hours to start at 10pm so overnight is contiguous on the left
-  // Display order: 22,23,0,1,2,3,4,5,6,7,...,21
+  const isOvernight=h=>h>=22||h<6;
+  const onVals=cgm.filter(d=>isOvernight(d.t.getHours())).map(d=>d.v);
+  const dayVals=cgm.filter(d=>!isOvernight(d.t.getHours())).map(d=>d.v);
+
+  function stats(arr){
+    if(!arr.length) return null;
+    const avg=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+    const sd=Math.round(Math.sqrt(arr.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/arr.length));
+    const cv=Math.round(sd/avg*100);
+    const tir=Math.round(arr.filter(v=>v>=LOW&&v<=HIGH_TIR).length/arr.length*100);
+    const low=Math.round(arr.filter(v=>v<LOW).length/arr.length*100);
+    const high=Math.round(arr.filter(v=>v>HIGH_TIR).length/arr.length*100);
+    return{avg,sd,cv,tir,low,high};
+  }
+  const on=stats(onVals), da=stats(dayVals);
+  if(!on||!da) return;
+
+  // Hourly averages for sparkline
   const hourBuckets=Array.from({length:24},()=>[]);
   cgm.forEach(d=>hourBuckets[d.t.getHours()].push(d.v));
   const hourAvg=hourBuckets.map(b=>b.length?Math.round(b.reduce((a,v)=>a+v,0)/b.length):null);
-
+  // Reorder: 22,23,0..21
   const hourOrder=[22,23,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21];
-  const labels=['10p','11p','12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p'];
-  const isOvernight=h=>h>=22||h<6;
+  const reordered=hourOrder.map(h=>hourAvg[h]);
+  const xLabels=['10p','11p','12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p'];
 
-  // Reordered data arrays
-  const reorderedAvg=hourOrder.map(h=>hourAvg[h]);
-  // Split into overnight (indices 0-7: 10pm-5am) and daytime (indices 8-23: 6am-9pm)
-  // with bridge points at transitions (idx 7→8 and idx 23 wrap)
-  const overnightConn=reorderedAvg.map((v,i)=>i<=8?v:null);  // indices 0-8: 10pm to 6am
-  const daytimeConn=reorderedAvg.map((v,i)=>i>=8?v:null);     // indices 8-23: 6am to 9pm
+  // Color helpers
+  const tirColor=v=>v>=85?'#00d4a0':v>=70?'#ffb347':'#ff4d6d';
+  const lowColor=v=>v<2?'#00d4a0':v<4?'#ffb347':'#ff4d6d';
 
+  // ── RENDER: stat cards + sparkline ──
+  el.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <!-- Overnight card -->
+      <div style="background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);border-radius:10px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px;letter-spacing:.04em">🌙 OVERNIGHT</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Avg BG</div>
+            <div style="font-size:22px;font-weight:700;color:var(--text);line-height:1">${on.avg}</div></div>
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">TIR</div>
+            <div style="font-size:22px;font-weight:700;color:${tirColor(on.tir)};line-height:1">${on.tir}%</div></div>
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">CV</div>
+            <div style="font-size:16px;font-weight:600;color:${on.cv<=25?'#00d4a0':on.cv<=36?'#ffb347':'#ff4d6d'};line-height:1">${on.cv}%</div></div>
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Low</div>
+            <div style="font-size:16px;font-weight:600;color:${lowColor(on.low)};line-height:1">${on.low}%</div></div>
+        </div>
+      </div>
+      <!-- Daytime card -->
+      <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;letter-spacing:.04em">☀️ DAYTIME</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Avg BG</div>
+            <div style="font-size:22px;font-weight:700;color:var(--text);line-height:1">${da.avg}</div></div>
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">TIR</div>
+            <div style="font-size:22px;font-weight:700;color:${tirColor(da.tir)};line-height:1">${da.tir}%</div></div>
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">CV</div>
+            <div style="font-size:16px;font-weight:600;color:${da.cv<=25?'#00d4a0':da.cv<=36?'#ffb347':'#ff4d6d'};line-height:1">${da.cv}%</div></div>
+          <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Low</div>
+            <div style="font-size:16px;font-weight:600;color:${lowColor(da.low)};line-height:1">${da.low}%</div></div>
+        </div>
+      </div>
+    </div>
+    <!-- Delta row -->
+    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:11px;flex-wrap:wrap">
+      ${Math.abs(on.avg-da.avg)>5?`<span style="color:var(--text3)">Avg BG delta: <strong style="color:${on.avg>da.avg?'#818cf8':'#fbbf24'}">${on.avg>da.avg?'overnight':'daytime'} runs ${Math.abs(on.avg-da.avg)} mg/dL higher</strong></span>`:'<span style="color:#00d4a0">✓ Overnight and daytime averages within 5 mg/dL</span>'}
+      ${Math.abs(on.tir-da.tir)>10?`<span style="color:var(--text3)">TIR gap: <strong style="color:#ffb347">${Math.abs(on.tir-da.tir)}% difference</strong></span>`:''}
+    </div>
+    <!-- Sparkline chart -->
+    <div style="position:relative;height:110px"><canvas id="overnightChart"></canvas></div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:4px"><span>10pm</span><span>6am</span><span>12pm</span><span>6pm</span><span>9pm</span></div>
+  `;
+
+  // Draw sparkline
+  const canvas=document.getElementById('overnightChart');
+  if(!canvas) return;
   const grid='rgba(255,255,255,0.05)';
   window.overnightChart=new Chart(canvas,{
     type:'line',
-    data:{labels,datasets:[
-      {label:'Overnight',data:overnightConn,borderColor:'#818cf8',borderWidth:2.5,pointRadius:overnightConn.map((v,i)=>v!=null&&i<8?3:0),pointBackgroundColor:'#818cf8',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
-      {label:'Daytime',data:daytimeConn,borderColor:'#fbbf24',borderWidth:2.5,pointRadius:daytimeConn.map((v,i)=>v!=null&&i>8?3:0),pointBackgroundColor:'#fbbf24',tension:0.3,fill:false,spanGaps:false,datalabels:{display:false}},
-      {label:'Upper',data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
-      {label:'Lower',data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.25)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,datalabels:{display:false}},
+    data:{labels:xLabels,datasets:[
+      {data:reordered.map((v,i)=>hourOrder[i]>=22||hourOrder[i]<6?v:null),
+       borderColor:'#818cf8',borderWidth:2,pointRadius:0,tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
+      {data:reordered.map((v,i)=>hourOrder[i]>=6&&hourOrder[i]<22?v:null),
+       borderColor:'#fbbf24',borderWidth:2,pointRadius:0,tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
+      // bridge points at transitions
+      {data:reordered.map((v,i)=>(i===7||i===8)?v:null),
+       borderColor:'rgba(150,150,160,0.4)',borderWidth:1,pointRadius:0,tension:0,fill:false,spanGaps:true,datalabels:{display:false}},
+      {data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.2)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
+      {data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.2)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
     ]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:true,position:'top',labels:{color:'rgba(240,240,240,0.7)',font:{size:11},usePointStyle:true,filter:item=>item.text==='Overnight'||item.text==='Daytime'}},
-        datalabels:{display:false},
-        tooltip:{callbacks:{label:ctx=>{
-          if(ctx.dataset.label==='Overnight'||ctx.dataset.label==='Daytime')
-            return ctx.dataset.label+': '+ctx.parsed.y+' mg/dL';
-          return '';
-        }}}
-      },
+      plugins:{legend:{display:false},datalabels:{display:false},tooltip:{callbacks:{
+        label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':''
+      }}},
       scales:{
-        x:{ticks:{color:'#505058',font:{size:9},maxRotation:0},grid:{color:grid}},
-        y:{min:50,max:220,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}}
+        x:{ticks:{color:'#505058',font:{size:8},maxRotation:0,maxTicksLimit:8},grid:{color:grid}},
+        y:{min:40,max:220,ticks:{color:'#505058',font:{size:9}},grid:{color:grid}}
       }}
   });
-
-  const onVals=cgm.filter(d=>isOvernight(d.t.getHours())).map(d=>d.v);
-  const dayVals=cgm.filter(d=>!isOvernight(d.t.getHours())).map(d=>d.v);
-  function s(arr){
-    if(!arr.length) return null;
-    const avg=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
-    const tir=Math.round(arr.filter(v=>v>=LOW&&v<=HIGH_TIR).length/arr.length*100);
-    const low=Math.round(arr.filter(v=>v<LOW).length/arr.length*100);
-    return{avg,tir,low};
-  }
-  const on=s(onVals),da=s(dayVals);
-  if(on&&da&&statsEl){
-    const onTirCls=on.tir>=70?'#818cf8':'#ff4d6d';
-    const daTirCls=da.tir>=70?'#fbbf24':'#ff4d6d';
-    statsEl.innerHTML=`<div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px">
-      <div style="display:flex;align-items:center;gap:6px"><span style="color:#818cf8;font-weight:700">🌙 Overnight (10pm–6am)</span>
-        <span style="color:var(--text3)">Avg</span><strong>${on.avg}</strong>
-        <span style="color:var(--text3)">TIR</span><strong style="color:${onTirCls}">${on.tir}%</strong>
-        <span style="color:var(--text3)">Low</span><strong style="color:#ff4d6d">${on.low}%</strong>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px"><span style="color:#fbbf24;font-weight:700">☀️ Daytime (6am–10pm)</span>
-        <span style="color:var(--text3)">Avg</span><strong>${da.avg}</strong>
-        <span style="color:var(--text3)">TIR</span><strong style="color:${daTirCls}">${da.tir}%</strong>
-        <span style="color:var(--text3)">Low</span><strong style="color:#ff4d6d">${da.low}%</strong>
-      </div>
-    </div>`;
-  }
 }
 
 
