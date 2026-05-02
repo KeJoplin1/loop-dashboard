@@ -266,7 +266,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="card-title purple">Daily TDD — bolus (blue) + basal (purple)</div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
-        <div id="tdd-split-stats" style="font-size:12px;color:var(--text3)"></div>
+
       </div>
       <div id="tdd-chart-wrap" style="position:relative;width:100%;height:220px">
         <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
@@ -529,7 +529,7 @@ function renderAll(){
   safe(()=>renderTIR(filteredCGM),'renderTIR');
   safe(()=>renderHourlyAvg(filteredCGM),'renderHourlyAvg');
   safe(()=>renderTDDChart(filteredBoluses,filteredBasals),'renderTDDChart');
-  safe(()=>renderTDDStats(filteredBoluses,filteredBasals),'renderTDDStats');
+
   safe(()=>renderHourlyLows(filteredCGM),'renderHourlyLows');
   safe(()=>renderHourlyHighs(filteredCGM),'renderHourlyHighs');
   safe(()=>renderHourlyDiverging(filteredCGM),'renderHourlyDiverging');
@@ -590,7 +590,8 @@ function renderMetrics(cgm,boluses,basals){
         <div class="metric-cell"><div class="metric-label">GMI</div><div class="metric-val ${gmiCls}">${gmi}<span class="unit">%</span></div></div>
         <div class="metric-cell"><div class="metric-label">TIR</div><div class="metric-val ${tirCls}">${tir}<span class="unit">%</span></div></div>
         <div class="metric-cell"><div class="metric-label">CV</div><div class="metric-val ${cvCls}">${cv}<span class="unit">%</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">SD</div><div class="metric-val">${sd}<span class="unit"> mg/dL</span></div></div>
+        <div class="metric-cell"><div class="metric-label">SD</div><div class="metric-val">${sd}<span class="unit"> mg/dL</span></div></div>
+        ${currentDays>1?`<div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:var(--blue)">${pBolus}%</span><span class="unit"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>`:''}
       </div>
     </div>
     <div class="metrics-section" style="flex:2">
@@ -677,7 +678,7 @@ function renderInsulinLanes(boluses,basals,cgm){
         else ctx.fillRect(xp-3,yZero-h,6,h);
         // Label only for boluses ≥ 0.3u to avoid clutter
         if(bolusArr[i]>=0.3){
-          ctx.fillStyle='#4d9fff';ctx.font='bold 8px -apple-system,sans-serif';
+          ctx.fillStyle='#00d4a0';ctx.font='bold 8px -apple-system,sans-serif';
           ctx.textAlign='center';ctx.fillText(bolusLabels[i],xp,yZero-h-4);
         }
       });
@@ -872,7 +873,7 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     return best;
   }
 
-  const BOLUS_COLOR='#4d9fff';
+  const BOLUS_COLOR='#00d4a0';
   const MEAL_COLOR='#f472b6';
   const EX_COLOR='#67e8f9';
   const AUTO_COLOR='#00d4a0';
@@ -952,9 +953,13 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
   if(!tooltip) return;
   const SNAP_X=18;
   function getNearestGluc(xPx){
-    const frac=(xPx-chartArea.left)/(chartArea.right-chartArea.left);
-    const ts=minT+frac*tRange;let best=null,bestD=Infinity;
-    filteredCGM.forEach(d=>{const d2=Math.abs(d.t.getTime()-ts);if(d2<bestD){bestD=d2;best=d;}});
+    // Use Chart.js meta pixel positions for exact alignment
+    let best=null,bestD=Infinity;
+    meta0.data.forEach((pt,i)=>{
+      if(!pt) return;
+      const d=Math.abs(pt.x-xPx);
+      if(d<bestD){bestD=d;best=cgmSampled[i];}
+    });
     return best;
   }
   function showTooltip(e,mx){
@@ -989,8 +994,26 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     tl=Math.max(8,Math.min(tl,window.innerWidth-tw-8));tt2=Math.max(8,tt2);
     tooltip.style.left=tl+'px';tooltip.style.top=tt2+'px';tooltip.style.display='block';
   }
+  // Draw crosshair line in SVG
+  function drawCrosshair(xPx){
+    let line=overlay.querySelector('#crosshair-line');
+    if(!line){
+      line=document.createElementNS(svgNS,'line');
+      line.setAttribute('id','crosshair-line');
+      line.setAttribute('stroke','rgba(255,255,255,0.2)');
+      line.setAttribute('stroke-width','1');
+      line.setAttribute('stroke-dasharray','4,3');
+      line.setAttribute('pointer-events','none');
+      overlay.appendChild(line);
+    }
+    if(xPx==null){line.style.display='none';return;}
+    line.style.display='';
+    line.setAttribute('x1',xPx);line.setAttribute('y1',GLUC_TOP);
+    line.setAttribute('x2',xPx);line.setAttribute('y2',GLUC_BOT);
+  }
+
   overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
-  overlay.onmouseleave=()=>{tooltip.style.display='none';};
+  overlay.onmouseleave=()=>{tooltip.style.display='none';drawCrosshair(null);};
   const canvas=document.getElementById('glucChart');
   canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
   canvas.onmouseleave=()=>{tooltip.style.display='none';};
@@ -1038,17 +1061,7 @@ function renderHourlyAvg(cgm){
   });
 }
 
-function renderTDDStats(boluses,basals){
-  const el=document.getElementById('tdd-split-stats');
-  if(!el) return;
-  const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
-  const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
-  const total=totalBolus+totalBasal;
-  if(!total){el.innerHTML='';return;}
-  const pBolus=Math.round(totalBolus/total*100);
-  const pBasal=100-pBolus;
-  el.innerHTML=`<span style="color:var(--blue);font-weight:700">${pBolus}% bolus</span> <span style="color:var(--text3)">/</span> <span style="color:var(--purple);font-weight:700">${pBasal}% basal</span>`;
-}
+function renderTDDStats(){}
 
 function renderTDDChart(boluses,basals){
   if(tddChart) tddChart.destroy();
@@ -1309,7 +1322,8 @@ function renderOvernightVsDaytime(cgm){
   if(!el||!cgm.length) return;
   const HIGH_TIR=tirMode==='tight'?140:HIGH;
 
-  const isOvernight=h=>h>=22||h<6;
+  // 9pm–7am = overnight
+  const isOvernight=h=>h>=21||h<7;
   const onVals=cgm.filter(d=>isOvernight(d.t.getHours())).map(d=>d.v);
   const dayVals=cgm.filter(d=>!isOvernight(d.t.getHours())).map(d=>d.v);
 
@@ -1326,25 +1340,23 @@ function renderOvernightVsDaytime(cgm){
   const on=stats(onVals), da=stats(dayVals);
   if(!on||!da) return;
 
-  // Hourly averages for sparkline
+  // Hourly averages — full 24h, reordered to start at 9pm
   const hourBuckets=Array.from({length:24},()=>[]);
   cgm.forEach(d=>hourBuckets[d.t.getHours()].push(d.v));
   const hourAvg=hourBuckets.map(b=>b.length?Math.round(b.reduce((a,v)=>a+v,0)/b.length):null);
-  // Reorder: 22,23,0..21
-  const hourOrder=[22,23,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21];
+  // Order: 21,22,23,0,1,2,3,4,5,6,7,8,...,20
+  const hourOrder=[21,22,23,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
   const reordered=hourOrder.map(h=>hourAvg[h]);
-  const xLabels=['10p','11p','12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p'];
+  // Build ONE continuous line — color each segment in afterDraw plugin
+  const xLabels=['9p','10p','11p','12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p'];
 
-  // Color helpers
   const tirColor=v=>v>=85?'#00d4a0':v>=70?'#ffb347':'#ff4d6d';
   const lowColor=v=>v<2?'#00d4a0':v<4?'#ffb347':'#ff4d6d';
 
-  // ── RENDER: stat cards + sparkline ──
   el.innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <!-- Overnight card -->
       <div style="background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);border-radius:10px;padding:12px">
-        <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px;letter-spacing:.04em">🌙 OVERNIGHT</div>
+        <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px;letter-spacing:.04em">🌙 OVERNIGHT (9pm–7am)</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
           <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Avg BG</div>
             <div style="font-size:22px;font-weight:700;color:var(--text);line-height:1">${on.avg}</div></div>
@@ -1356,9 +1368,8 @@ function renderOvernightVsDaytime(cgm){
             <div style="font-size:16px;font-weight:600;color:${lowColor(on.low)};line-height:1">${on.low}%</div></div>
         </div>
       </div>
-      <!-- Daytime card -->
       <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:12px">
-        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;letter-spacing:.04em">☀️ DAYTIME</div>
+        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;letter-spacing:.04em">☀️ DAYTIME (7am–9pm)</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
           <div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;margin-bottom:2px">Avg BG</div>
             <div style="font-size:22px;font-weight:700;color:var(--text);line-height:1">${da.avg}</div></div>
@@ -1371,37 +1382,45 @@ function renderOvernightVsDaytime(cgm){
         </div>
       </div>
     </div>
-    <!-- Delta row -->
-    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:11px;flex-wrap:wrap">
-      ${Math.abs(on.avg-da.avg)>5?`<span style="color:var(--text3)">Avg BG delta: <strong style="color:${on.avg>da.avg?'#818cf8':'#fbbf24'}">${on.avg>da.avg?'overnight':'daytime'} runs ${Math.abs(on.avg-da.avg)} mg/dL higher</strong></span>`:'<span style="color:#00d4a0">✓ Overnight and daytime averages within 5 mg/dL</span>'}
-      ${Math.abs(on.tir-da.tir)>10?`<span style="color:var(--text3)">TIR gap: <strong style="color:#ffb347">${Math.abs(on.tir-da.tir)}% difference</strong></span>`:''}
-    </div>
-    <!-- Sparkline chart -->
+    ${Math.abs(on.avg-da.avg)>5?`<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Avg BG delta: <strong style="color:${on.avg>da.avg?'#818cf8':'#fbbf24'}">${on.avg>da.avg?'overnight':'daytime'} runs ${Math.abs(on.avg-da.avg)} mg/dL higher</strong></div>`:'<div style="font-size:11px;color:#00d4a0;margin-bottom:10px">✓ Overnight and daytime averages within 5 mg/dL</div>'}
     <div style="position:relative;height:110px"><canvas id="overnightChart"></canvas></div>
-    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:4px"><span>10pm</span><span>6am</span><span>12pm</span><span>6pm</span><span>9pm</span></div>
   `;
 
-  // Draw sparkline
   const canvas=document.getElementById('overnightChart');
   if(!canvas) return;
   const grid='rgba(255,255,255,0.05)';
+
+  // Single continuous line — custom afterDraw colors segments by period
+  const colorPlugin={
+    id:'segColor',
+    afterDraw(chart){
+      const{ctx,scales:{x,y}}=chart;
+      const pts=chart.getDatasetMeta(0).data;
+      if(pts.length<2) return;
+      ctx.save();ctx.lineWidth=2;
+      for(let i=1;i<pts.length;i++){
+        if(reordered[i]==null||reordered[i-1]==null) continue;
+        const h=hourOrder[i];
+        ctx.strokeStyle=isOvernight(h)?'rgba(129,140,248,0.85)':'rgba(251,191,36,0.85)';
+        ctx.beginPath();ctx.moveTo(pts[i-1].x,pts[i-1].y);ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
+
   window.overnightChart=new Chart(canvas,{
     type:'line',
     data:{labels:xLabels,datasets:[
-      {data:reordered.map((v,i)=>hourOrder[i]>=22||hourOrder[i]<6?v:null),
-       borderColor:'#818cf8',borderWidth:2,pointRadius:0,tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
-      {data:reordered.map((v,i)=>hourOrder[i]>=6&&hourOrder[i]<22?v:null),
-       borderColor:'#fbbf24',borderWidth:2,pointRadius:0,tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
-      // bridge points at transitions
-      {data:reordered.map((v,i)=>(i===7||i===8)?v:null),
-       borderColor:'rgba(150,150,160,0.4)',borderWidth:1,pointRadius:0,tension:0,fill:false,spanGaps:true,datalabels:{display:false}},
-      {data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.2)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
-      {data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.2)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
+      // Single transparent dataset for axes — plugin draws colored segments
+      {data:reordered,borderColor:'transparent',borderWidth:0,pointRadius:0,
+       tension:0.3,fill:false,spanGaps:true,datalabels:{display:false}},
+      {data:Array(24).fill(HIGH_TIR),borderColor:'rgba(255,179,71,0.18)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
+      {data:Array(24).fill(LOW),borderColor:'rgba(255,77,109,0.18)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,datalabels:{display:false}},
     ]},
+    plugins:[colorPlugin],
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},datalabels:{display:false},tooltip:{callbacks:{
-        label:ctx=>ctx.parsed.y?ctx.parsed.y+' mg/dL':''
-      }}},
+      plugins:{legend:{display:false},datalabels:{display:false},
+        tooltip:{callbacks:{label:ctx=>ctx.datasetIndex===0&&ctx.parsed.y?ctx.parsed.y+' mg/dL':''}}},
       scales:{
         x:{ticks:{color:'#505058',font:{size:8},maxRotation:0,maxTicksLimit:8},grid:{color:grid}},
         y:{min:40,max:220,ticks:{color:'#505058',font:{size:9}},grid:{color:grid}}
