@@ -957,32 +957,47 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     return best;
   }
   function showTooltip(e,mx){
-    if(mx<chartArea.left||mx>chartArea.right){tooltip.style.display='none';return;}
+    if(mx<chartArea.left||mx>chartArea.right){
+      tooltip.style.display='none';
+      drawCrosshair(null);
+      return;
+    }
     const nearest=getNearestGluc(mx);
-    if(!nearest){tooltip.style.display='none';return;}
+    if(!nearest){tooltip.style.display='none';drawCrosshair(null);return;}
+
+    // Draw crosshair at the exact pixel of the nearest CGM point
+    let crossX=mx;
+    meta0.data.forEach((pt,i)=>{if(cgmSampled[i]===nearest&&pt) crossX=pt.x;});
+    drawCrosshair(crossX);
+
     const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     const HIGH_TIR_TT=tirMode==='tight'?140:HIGH;
     const gc=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH_TIR_TT?'#ffb347':'#00d4a0';
     let html=`<div class="tt-time">${timeStr}</div><div class="tt-gluc" style="color:${gc}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
-    // Add basal rate at this time
+
+    // Basal rate at this exact time
     if(filteredBasals&&filteredBasals.length){
       const bsorted=[...filteredBasals].sort((a,b)=>a.t-b.t);
       let bRate=0;for(const b of bsorted){if(b.t<=nearest.t) bRate=b.rate||0; else break;}
       if(bRate>0) html+=`<div class="tt-row"><span style="color:#a78bfa">▬ Basal ${bRate.toFixed(2)}u/hr</span></div>`;
     }
-    // Add any boluses within ±5 min
+
+    // Boluses within ±1 CGM interval (5 min) of the NEAREST data point only
     if(filteredBoluses&&filteredBoluses.length){
-      const near5=filteredBoluses.filter(b=>Math.abs(b.t-nearest.t)<5*60000);
-      const bolusSum=near5.reduce((s,b)=>s+b.units,0);
+      const BOLUS_WINDOW=5*60000; // exactly ±5 min around nearest point
+      const nearB=filteredBoluses.filter(b=>Math.abs(b.t.getTime()-nearest.t.getTime())<BOLUS_WINDOW);
+      const bolusSum=nearB.reduce((s,b)=>s+b.units,0);
       if(bolusSum>0) html+=`<div class="tt-row"><span style="color:#00d4a0">💉 Bolus ${roundTenth(bolusSum)}u</span></div>`;
     }
+
+    // Meals and exercise from eventList (NOT boluses — handled above)
     eventList.forEach(ev=>{
-      if(Math.abs(ev.xPx-mx)<=SNAP_X){
-        if(ev.type==='bolus') html+=`<div class="tt-row"><span style="color:${BOLUS_COLOR}">💉 ${ev.units}u bolus</span></div>`;
-        else if(ev.type==='meal') html+=`<div class="tt-row"><span style="color:${MEAL_COLOR}">🍽️ ${ev.carbs}g carbs</span></div>`;
+      if(Math.abs(ev.xPx-crossX)<=SNAP_X){
+        if(ev.type==='meal') html+=`<div class="tt-row"><span style="color:${MEAL_COLOR}">🍽️ ${ev.carbs}g carbs</span></div>`;
         else if(ev.type==='exercise') html+=`<div class="tt-row"><span style="color:${EX_COLOR}">🏃 ${ev.name} ${Math.round(ev.dur)}min</span></div>`;
       }
     });
+
     tooltip.innerHTML=html;
     const tw=tooltip.offsetWidth||140,th=tooltip.offsetHeight||60;
     let tl=e.clientX-tw/2,tt2=e.clientY-th-16;
@@ -1012,7 +1027,7 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
   overlay.onmouseleave=()=>{tooltip.style.display='none';drawCrosshair(null);};
   const canvas=document.getElementById('glucChart');
   canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
-  canvas.onmouseleave=()=>{tooltip.style.display='none';};
+  canvas.onmouseleave=()=>{tooltip.style.display='none';drawCrosshair(null);};
 }
 
 function renderTIR(cgm){
