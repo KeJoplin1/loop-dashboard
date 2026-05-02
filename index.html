@@ -617,12 +617,14 @@ function renderMetrics(cgm,boluses,basals){
 
 function renderInsulinLanes(boluses,basals,cgm,chart){
   const wrap=document.getElementById('insulin-lane-wrap');
-  if(!wrap) return;
+  console.log('[Insulin] wrap:', wrap, 'chart:', chart?.chartArea, 'basals:', basals?.length, 'boluses:', boluses?.length);
+  if(!wrap){console.error('[Insulin] wrap not found');return;}
   wrap.innerHTML='';
-  if(!cgm.length||!basals.length&&!boluses.length) return;
-  if(!chart?.chartArea) return;
+  if(!cgm.length||(!basals.length&&!boluses.length)){console.error('[Insulin] no data');return;}
+  if(!chart?.chartArea){console.error('[Insulin] no chartArea - chart:', chart);return;}
 
   const ca=chart.chartArea;
+  console.log('[Insulin] chartArea:', ca, 'dpr:', window.devicePixelRatio);
   const minT=cgm[0].t.getTime();
   const maxT=cgm[cgm.length-1].t.getTime();
   const tRange=maxT-minT;
