@@ -525,7 +525,7 @@ function renderAll(){
   safe(()=>renderMetrics(filteredCGM,filteredBoluses,filteredBasals),'renderMetrics');
   safe(()=>renderGlucoseChart(filteredCGM),'renderGlucoseChart');
   const ilw=document.getElementById('insulin-lane-wrap');
-  if(ilw) ilw.style.display='none';
+  if(ilw&&currentDays>7) ilw.style.display='none';
   safe(()=>renderTIR(filteredCGM),'renderTIR');
   safe(()=>renderHourlyAvg(filteredCGM),'renderHourlyAvg');
   safe(()=>renderTDDChart(filteredBoluses,filteredBasals),'renderTDDChart');
@@ -617,14 +617,13 @@ function renderMetrics(cgm,boluses,basals){
 
 function renderInsulinLanes(boluses,basals,cgm,chart){
   const wrap=document.getElementById('insulin-lane-wrap');
-  console.log('[Insulin] wrap:', wrap, 'chart:', chart?.chartArea, 'basals:', basals?.length, 'boluses:', boluses?.length);
   if(!wrap){console.error('[Insulin] wrap not found');return;}
+  wrap.style.display='block'; // must show before measuring
   wrap.innerHTML='';
   if(!cgm.length||(!basals.length&&!boluses.length)){console.error('[Insulin] no data');return;}
-  if(!chart?.chartArea){console.error('[Insulin] no chartArea - chart:', chart);return;}
+  if(!chart?.chartArea){console.error('[Insulin] no chartArea');return;}
 
   const ca=chart.chartArea;
-  console.log('[Insulin] chartArea:', ca, 'dpr:', window.devicePixelRatio);
   const minT=cgm[0].t.getTime();
   const maxT=cgm[cgm.length-1].t.getTime();
   const tRange=maxT-minT;
