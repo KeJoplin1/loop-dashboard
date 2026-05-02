@@ -704,15 +704,8 @@ function renderInsulinLanes(boluses,basals,cgm){
   };
 
   const grid='rgba(255,255,255,0.04)';
-  window._insulinChart=new Chart(canvas,{
-    type:'line',
-    data:{labels,datasets:[
-      {label:'Basal',data:basalData,
-       borderColor:'rgba(167,139,250,0.8)',backgroundColor:'rgba(167,139,250,0.2)',
-       borderWidth:1.5,pointRadius:0,fill:true,tension:0,
-       datalabels:{display:false}},
-    ]},
-    const crosshairPlugin={
+
+  const crosshairPlugin={
     id:'crosshair',
     afterDraw(chart){
       if(chart._hoverIdx==null) return;
@@ -724,7 +717,15 @@ function renderInsulinLanes(boluses,basals,cgm){
       ctx.restore();
     }
   };
-  plugins:[bolusPlugin,crosshairPlugin],
+  window._insulinChart=new Chart(canvas,{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'Basal',data:basalData,
+       borderColor:'rgba(167,139,250,0.8)',backgroundColor:'rgba(167,139,250,0.2)',
+       borderWidth:1.5,pointRadius:0,fill:true,tension:0,
+       datalabels:{display:false}},
+    ]},
+    plugins:[bolusPlugin,crosshairPlugin],
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
