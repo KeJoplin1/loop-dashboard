@@ -182,11 +182,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
     <div class="card">
       <div class="card-title">Glucose trace (mg/dL)</div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked> Target band</label>
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked> Excursion dots</label>
-<label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked> Meal markers</label>
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked> Exercise</label>
+      <!-- Unified legend for both glucose trace + insulin lane -->
+      <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-band" onchange="renderGlucoseChart(filteredCGM)" checked><span style="width:18px;height:2px;background:#00d4a0;border-radius:1px;display:inline-block"></span>Glucose</label>
+        <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-dots" onchange="renderGlucoseChart(filteredCGM)" checked><span style="width:8px;height:8px;background:#ffb347;border-radius:50%;display:inline-block"></span>Excursions</label>
+        <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-meals" onchange="renderGlucoseChart(filteredCGM)" checked><span style="width:8px;height:8px;background:#f472b6;border-radius:50%;display:inline-block"></span>Meals</label>
+        <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-exercise" onchange="renderGlucoseChart(filteredCGM)" checked><span style="width:10px;height:8px;background:rgba(103,232,249,0.35);border:1px solid #67e8f9;border-radius:2px;display:inline-block"></span>Exercise</label>
+        <span style="color:rgba(255,255,255,0.15);margin:0 2px">|</span>
+        <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:18px;height:6px;background:rgba(167,139,250,0.55);border-radius:2px;display:inline-block"></span>Basal</span>
+        <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:14px;background:rgba(77,159,255,0.85);border-radius:2px;display:inline-block"></span>Bolus</span>
       </div>
       <!-- Glucose chart -->
       <div id="chart-container" style="position:relative;width:100%;height:240px">
@@ -620,90 +624,68 @@ function renderInsulinLanes(boluses,basals,cgm){
   wrap.innerHTML='<canvas id="insulinChart" style="width:100%;height:100%"></canvas>';
   const canvas=document.getElementById('insulinChart');
 
-  const AUTO_THRESHOLD=0.5;
   const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
 
-  // Downsample CGM to max 288 points for x-axis
+  // Downsample CGM to max 288 points for x-axis labels
   const MAX_PTS=288;
   const step=Math.max(1,Math.floor(cgm.length/MAX_PTS));
   const sampled=cgm.filter((_,i)=>i%step===0);
-  // Generate labels matching glucose chart tick density
-  const spanMs=sampled[sampled.length-1].t-sampled[0].t;
-  const spanHrs=spanMs/3600000;
-  // Pick interval so we get ~8-12 ticks regardless of date range
-  const tickIntervalHrs=spanHrs<=26?2:spanHrs<=72?6:spanHrs<=168?12:24;
-  const tickIntervalMs=tickIntervalHrs*3600000;
-  const labels=sampled.map(d=>{
-    const t=d.t.getTime();
-    const sinceStart=t-sampled[0].t.getTime();
-    // Only show label at tick interval boundaries, rest are empty
-    if(Math.round(sinceStart/tickIntervalMs)*tickIntervalMs===sinceStart||
-       Math.abs(sinceStart%tickIntervalMs)<(sampled[1]?sampled[1].t-sampled[0].t:300000)){
-      const h=d.t.getHours(),m=d.t.getMinutes();
-      if(m!==0) return '';
-      if(h%tickIntervalHrs!==0) return '';
-      const ampm=h>=12?'pm':'am';const hh=h%12||12;
-      return spanHrs>26?(d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+hh+ampm):hh+ampm;
-    }
-    return '';
-  });
 
   // Basal rate at each sampled point
   const basalRateAt=t=>{
     let rate=0;
-    for(let b of basalsSorted){ if(b.t.getTime()<=t) rate=b.rate||0; else break; }
+    for(const b of basalsSorted){if(b.t.getTime()<=t) rate=b.rate||0; else break;}
     return rate;
   };
   const basalData=sampled.map(d=>Math.round(basalRateAt(d.t.getTime())*100)/100);
   const maxRate=Math.max(...basalData,0.1);
 
-  // Map boluses to nearest sampled index
-  const manualArr=new Array(sampled.length).fill(null);
-  const autoArr=new Array(sampled.length).fill(null);
-  const manualLabels=new Array(sampled.length).fill('');
+  // All boluses mapped to nearest sampled index (no auto/manual split)
+  const bolusArr=new Array(sampled.length).fill(0);
+  const bolusLabels=new Array(sampled.length).fill('');
   boluses.forEach(b=>{
     let bi=0,bd=Infinity;
     sampled.forEach((d,i)=>{const dd=Math.abs(d.t.getTime()-b.t.getTime());if(dd<bd){bd=dd;bi=i;}});
-    if(b.units>=AUTO_THRESHOLD){
-      manualArr[bi]=(manualArr[bi]||0)+b.units;
-      manualLabels[bi]=roundTenth(manualArr[bi])+'u';
-    } else {
-      autoArr[bi]=(autoArr[bi]||0)+b.units;
-    }
+    bolusArr[bi]+=b.units;
   });
-  const maxManual=Math.max(...manualArr.filter(v=>v!=null),0.5);
-  const maxAuto=Math.max(...autoArr.filter(v=>v!=null),0.05);
+  // Sum and label boluses per bin
+  bolusArr.forEach((v,i)=>{if(v>0) bolusLabels[i]=roundTenth(v)+'u';});
+  const maxBolus=Math.max(...bolusArr.filter(v=>v>0),0.5);
 
-  // Manual bolus bar plugin — draws vertical bars at bolus times
+  // Time labels — match glucose chart density
+  const spanMs=sampled[sampled.length-1].t-sampled[0].t;
+  const spanHrs=spanMs/3600000;
+  const tickIntervalHrs=spanHrs<=26?2:spanHrs<=72?6:spanHrs<=168?12:24;
+  const labels=sampled.map(d=>{
+    const h=d.t.getHours(),m=d.t.getMinutes();
+    if(m!==0||h%tickIntervalHrs!==0) return '';
+    const ampm=h>=12?'pm':'am';const hh=h%12||12;
+    return spanHrs>26?(d.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+hh+ampm):hh+ampm;
+  });
+
+  // Bolus bars drawn by custom plugin
   const bolusPlugin={
     id:'bolusPlugin',
     afterDatasetsDraw(chart){
       const{ctx,chartArea:{top,bottom},scales:{x,y}}=chart;
-      ctx.save();
       const yZero=y.getPixelForValue(0);
+      ctx.save();
       sampled.forEach((_,i)=>{
+        if(bolusArr[i]<=0) return;
         const xp=x.getPixelForValue(i);
-        // Auto boluses — thin teal bars
-        if(autoArr[i]>0){
-          const h=Math.max(4,(autoArr[i]/maxAuto)*(bottom-top)*0.7);
-          ctx.fillStyle='rgba(0,212,160,0.65)';
-          ctx.fillRect(xp-2,yZero-h,4,h);
-        }
-        // Manual boluses — wider blue bars + label
-        if(manualArr[i]>0){
-          const h=Math.max(8,(manualArr[i]/maxManual)*(bottom-top)*0.85);
-          ctx.fillStyle='rgba(77,159,255,0.9)';
-          if(ctx.roundRect) ctx.beginPath(),ctx.roundRect(xp-3,yZero-h,6,h,2),ctx.fill();
-          else ctx.fillRect(xp-3,yZero-h,6,h);
-          ctx.fillStyle='#4d9fff';ctx.font='bold 9px -apple-system,sans-serif';
-          ctx.textAlign='center';ctx.fillText(manualLabels[i],xp,yZero-h-4);
+        const h=Math.max(6,(bolusArr[i]/maxBolus)*(bottom-top)*0.88);
+        ctx.fillStyle='rgba(77,159,255,0.9)';
+        if(ctx.roundRect){ctx.beginPath();ctx.roundRect(xp-3,yZero-h,6,h,2);ctx.fill();}
+        else ctx.fillRect(xp-3,yZero-h,6,h);
+        // Label only for boluses ≥ 0.3u to avoid clutter
+        if(bolusArr[i]>=0.3){
+          ctx.fillStyle='#4d9fff';ctx.font='bold 8px -apple-system,sans-serif';
+          ctx.textAlign='center';ctx.fillText(bolusLabels[i],xp,yZero-h-4);
         }
       });
       ctx.restore();
     }
   };
-
-  const grid='rgba(255,255,255,0.04)';
 
   const crosshairPlugin={
     id:'crosshair',
@@ -712,36 +694,27 @@ function renderInsulinLanes(boluses,basals,cgm){
       const{ctx,chartArea:{top,bottom},scales:{x}}=chart;
       const xp=x.getPixelForValue(chart._hoverIdx);
       ctx.save();
-      ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
       ctx.beginPath();ctx.moveTo(xp,top);ctx.lineTo(xp,bottom);ctx.stroke();
       ctx.restore();
     }
   };
+
+  const grid='rgba(255,255,255,0.04)';
   window._insulinChart=new Chart(canvas,{
     type:'line',
     data:{labels,datasets:[
       {label:'Basal',data:basalData,
-       borderColor:'rgba(167,139,250,0.8)',backgroundColor:'rgba(167,139,250,0.2)',
-       borderWidth:1.5,pointRadius:0,fill:true,tension:0,
-       datalabels:{display:false}},
+       borderColor:'rgba(167,139,250,0.8)',backgroundColor:'rgba(167,139,250,0.18)',
+       borderWidth:1.5,pointRadius:0,fill:true,tension:0,datalabels:{display:false}},
     ]},
     plugins:[bolusPlugin,crosshairPlugin],
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        datalabels:{display:false},
-        tooltip:{callbacks:{label:ctx=>ctx.datasetIndex===0?'Basal: '+ctx.parsed.y.toFixed(2)+'u/hr':''}}
-      },
+      plugins:{legend:{display:false},datalabels:{display:false},
+        tooltip:{enabled:false}},
       scales:{
-        x:{ticks:{maxTicksLimit:8,autoSkipPadding:20,maxRotation:0,color:'#505058',font:{size:9},
-            callback:(v,i,tks)=>{
-              // Match glucose chart tick density
-              const n=tks.length;const total=labels.length;
-              if(n<=1) return labels[i]||null;
-              // Show label only at evenly spaced positions matching glucose chart
-              const step=Math.round(total/(n-1));
-              return i%step===0?labels[i]||null:null;
-            }},
+        x:{ticks:{autoSkip:true,maxTicksLimit:8,maxRotation:0,color:'#505058',font:{size:9},
+            callback:(v,i)=>labels[i]||null},
           grid:{color:grid,drawTicks:false}},
         y:{display:false,min:0,max:maxRate*1.3,grid:{display:false}}
       },
@@ -749,39 +722,31 @@ function renderInsulinLanes(boluses,basals,cgm){
     }
   });
 
-  // Legend
-  const legend=document.createElement('div');
-  legend.style.cssText='position:absolute;bottom:-22px;left:0;display:flex;gap:16px;font-size:11px;color:rgba(200,198,215,0.85);pointer-events:none;font-weight:500';
-  legend.innerHTML=[['rgba(167,139,250,0.7)','Basal'],['rgba(77,159,255,0.9)','Manual bolus'],['rgba(0,212,160,0.65)','Auto bolus']].map(([c,l])=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:6px;background:${c};border-radius:2px;display:inline-block"></span>${l}</span>`).join('');
-  wrap.appendChild(legend);
 
-  const lbl=document.createElement('div');
-  lbl.style.cssText='position:absolute;top:50%;left:2px;transform:translateY(-50%);font-size:9px;font-weight:600;color:rgba(200,195,215,0.4);pointer-events:none;writing-mode:vertical-rl;text-orientation:mixed';
-  lbl.textContent='Insulin';
-  wrap.appendChild(lbl);
 
-  // Insulin hover tooltip
+  // Hover tooltip
   canvas.addEventListener('mousemove',e=>{
     const rect=canvas.getBoundingClientRect();
     const mx=e.clientX-rect.left;
     const chart=window._insulinChart;
-    if(!chart) return;
+    if(!chart?.chartArea) return;
     const{chartArea:{left,right},scales:{x}}=chart;
-    if(mx<left||mx>right){canvas._hoverIdx=null;chart._hoverIdx=null;chart.draw();hideInsTooltip();return;}
-    // Find nearest index
-    let bi=null,bd=Infinity;
-    sampled.forEach((_,i)=>{const xp=x.getPixelForValue(i);const d=Math.abs(xp-mx);if(d<bd){bd=d;bi=i;}});
+    if(mx<left||mx>right){chart._hoverIdx=null;chart.draw();hideInsTooltip();return;}
+    let bi=0,bd=Infinity;
+    sampled.forEach((_,i)=>{const d=Math.abs(x.getPixelForValue(i)-mx);if(d<bd){bd=d;bi=i;}});
     chart._hoverIdx=bi;chart.draw();
-    // Show tooltip
     const d=sampled[bi];
-    const basalVal=basalData[bi]||0;
-    const autoVal=autoArr[bi]||0;
-    const manualVal=manualArr[bi]||0;
     const timeStr=d.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    // Find nearest glucose reading
+    let nearGluc=null,nearGD=Infinity;
+    filteredCGM.forEach(g=>{const dd=Math.abs(g.t-d.t);if(dd<nearGD){nearGD=dd;nearGluc=g;}});
     let html=`<div class="tt-time">${timeStr}</div>`;
-    html+=`<div class="tt-row"><span style="color:#a78bfa">Basal ${basalVal.toFixed(2)}u/hr</span></div>`;
-    if(autoVal>0) html+=`<div class="tt-row"><span style="color:#00d4a0">Auto ${autoVal.toFixed(2)}u</span></div>`;
-    if(manualVal>0) html+=`<div class="tt-row"><span style="color:#4d9fff">Manual ${manualVal.toFixed(2)}u</span></div>`;
+    if(nearGluc){
+      const gc=nearGluc.v<LOW?'#ff4d6d':nearGluc.v>HIGH?'#ffb347':'#00d4a0';
+      html+=`<div class="tt-gluc" style="color:${gc}">${nearGluc.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
+    }
+    html+=`<div class="tt-row"><span style="color:#a78bfa">▬ Basal ${basalData[bi].toFixed(2)}u/hr</span></div>`;
+    if(bolusArr[bi]>0) html+=`<div class="tt-row"><span style="color:#4d9fff">💉 Bolus ${roundTenth(bolusArr[bi])}u</span></div>`;
     showInsTooltip(e.clientX,e.clientY,html);
   });
   canvas.addEventListener('mouseleave',()=>{
@@ -789,18 +754,6 @@ function renderInsulinLanes(boluses,basals,cgm){
     if(window._insulinChart){window._insulinChart._hoverIdx=null;window._insulinChart.draw();}
   });
 }
-
-function showInsTooltip(cx,cy,html){
-  let tt=document.getElementById('ins-tooltip');
-  if(!tt){tt=document.createElement('div');tt.id='ins-tooltip';
-    tt.style.cssText='position:fixed;background:rgba(15,15,20,0.95);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:12px;color:#e0e0e8;pointer-events:none;z-index:9999;display:none;min-width:130px';
-    document.body.appendChild(tt);}
-  tt.innerHTML=html;tt.style.display='block';
-  const tw=tt.offsetWidth,th=tt.offsetHeight;
-  tt.style.left=Math.min(cx+12,window.innerWidth-tw-8)+'px';
-  tt.style.top=Math.max(cy-th-8,8)+'px';
-}
-function hideInsTooltip(){const tt=document.getElementById('ins-tooltip');if(tt)tt.style.display='none';}
 
 function renderGlucoseChart(cgm){
   if(glucChart) glucChart.destroy();
@@ -1005,9 +958,8 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     // Add any boluses within ±5 min
     if(filteredBoluses&&filteredBoluses.length){
       const near5=filteredBoluses.filter(b=>Math.abs(b.t-nearest.t)<5*60000);
-      near5.filter(b=>b.units>=0.5).forEach(b=>html+=`<div class="tt-row"><span style="color:#4d9fff">💉 Manual ${b.units.toFixed(2)}u</span></div>`);
-      const autoSum=near5.filter(b=>b.units<0.5).reduce((s,b)=>s+b.units,0);
-      if(autoSum>0) html+=`<div class="tt-row"><span style="color:#00d4a0">⚡ Auto ${autoSum.toFixed(2)}u</span></div>`;
+      const bolusSum=near5.reduce((s,b)=>s+b.units,0);
+      if(bolusSum>0) html+=`<div class="tt-row"><span style="color:#4d9fff">💉 Bolus ${roundTenth(bolusSum)}u</span></div>`;
     }
     eventList.forEach(ev=>{
       if(Math.abs(ev.xPx-mx)<=SNAP_X){
