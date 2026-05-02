@@ -620,49 +620,50 @@ function renderInsulinLanes(boluses,basals,cgm){
   if(!wrap||!cgm.length) return;
   if(!glucChart?.chartArea) return;
 
-  // Build SVG inside insulin wrap that shares x-positions with glucChart
-  wrap.innerHTML='';
-  const svgNS='http://www.w3.org/2000/svg';
-  const svg=document.createElementNS(svgNS,'svg');
-  svg.style.cssText='width:100%;height:100%;display:block;overflow:visible';
-  wrap.appendChild(svg);
-
-  const chartArea=glucChart.chartArea;
+  const ca=glucChart.chartArea;
   const minT=cgm[0].t.getTime();
   const maxT=cgm[cgm.length-1].t.getTime();
   const tRange=maxT-minT;
   if(!tRange) return;
 
-  // Get the canvas CSS width to scale glucChart pixel coords to our SVG
+  // glucChart.chartArea values are in the canvas's internal coordinate space.
+  // We need to convert them to the wrap's CSS pixel space.
+  // The glucose canvas sits at the top of chart-container; the wrap is directly below.
+  // The canvas internal width vs CSS width ratio = devicePixelRatio (typically 1 or 2).
   const glucCanvas=document.getElementById('glucChart');
-  const scaleX=glucCanvas ? glucCanvas.getBoundingClientRect().width/glucCanvas.width : 1;
+  const dpr=glucCanvas ? (glucCanvas.width/glucCanvas.clientWidth)||1 : 1;
 
-  // x position: same formula as glucose chart, scaled to CSS pixels
-  const xOf=t=>(chartArea.left+(t-minT)/tRange*(chartArea.right-chartArea.left))*scaleX;
-  const LEFT=chartArea.left*scaleX;
-  const RIGHT=chartArea.right*scaleX;
-  const W=RIGHT-LEFT;
+  // Scale chartArea coords to CSS pixels
+  const cssLeft=ca.left/dpr;
+  const cssRight=ca.right/dpr;
+  const W=cssRight-cssLeft;
 
-  const INS_H=wrap.offsetHeight||90;
-  const INS_BOT=INS_H;
-  const USABLE=INS_H*0.85;
+  const xOf=t=>cssLeft+(t-minT)/tRange*W;
 
-  // ── BASAL: filled step rects ──
+  const INS_H=wrap.clientHeight||90;
+  const INS_BOT=INS_H-2;
+  const USABLE=INS_H*0.80;
+
+  // Build SVG with explicit pixel dimensions matching the wrap
+  const wrapW=wrap.clientWidth||800;
+  const svgNS='http://www.w3.org/2000/svg';
+  wrap.innerHTML='';
+  const svg=document.createElementNS(svgNS,'svg');
+  svg.setAttribute('width',wrapW);
+  svg.setAttribute('height',INS_H+18);
+  svg.style.cssText='display:block;overflow:visible';
+  wrap.appendChild(svg);
+
+  // ── BASAL ──
   const basalsSorted=[...basals].sort((a,b)=>a.t-b.t);
   const maxRate=Math.max(...basalsSorted.map(b=>b.rate||0),0.1);
 
-  // Background
-  const bg=document.createElementNS(svgNS,'rect');
-  bg.setAttribute('x',LEFT);bg.setAttribute('y',0);
-  bg.setAttribute('width',W);bg.setAttribute('height',INS_H);
-  bg.setAttribute('fill','rgba(255,255,255,0.015)');svg.appendChild(bg);
-
   for(let i=0;i<basalsSorted.length;i++){
     const b=basalsSorted[i];
-    const x1=Math.max(xOf(b.t.getTime()),LEFT);
+    const x1=Math.max(xOf(b.t.getTime()),cssLeft);
     const x2=i<basalsSorted.length-1
-      ?Math.min(xOf(basalsSorted[i+1].t.getTime()),RIGHT)
-      :RIGHT;
+      ?Math.min(xOf(basalsSorted[i+1].t.getTime()),cssRight)
+      :cssRight;
     if(x2<=x1) continue;
     const h=Math.max(1,((b.rate||0)/maxRate)*USABLE*0.65);
     const rect=document.createElementNS(svgNS,'rect');
@@ -671,13 +672,12 @@ function renderInsulinLanes(boluses,basals,cgm){
     rect.setAttribute('fill','rgba(167,139,250,0.35)');
     svg.appendChild(rect);
   }
-
   // Basal outline
   let d='';
   for(let i=0;i<basalsSorted.length;i++){
     const b=basalsSorted[i];
-    const x1=Math.max(xOf(b.t.getTime()),LEFT);
-    const x2=i<basalsSorted.length-1?Math.min(xOf(basalsSorted[i+1].t.getTime()),RIGHT):RIGHT;
+    const x1=Math.max(xOf(b.t.getTime()),cssLeft);
+    const x2=i<basalsSorted.length-1?Math.min(xOf(basalsSorted[i+1].t.getTime()),cssRight):cssRight;
     if(x2<=x1) continue;
     const h=Math.max(1,((b.rate||0)/maxRate)*USABLE*0.65);
     d+=`M${x1} ${INS_BOT-h}L${x2} ${INS_BOT-h} `;
@@ -685,16 +685,17 @@ function renderInsulinLanes(boluses,basals,cgm){
   if(d){
     const pl=document.createElementNS(svgNS,'path');
     pl.setAttribute('d',d);pl.setAttribute('fill','none');
-    pl.setAttribute('stroke','rgba(167,139,250,0.7)');pl.setAttribute('stroke-width','1.5');
+    pl.setAttribute('stroke','rgba(167,139,250,0.75)');pl.setAttribute('stroke-width','1.5');
     svg.appendChild(pl);
   }
 
-  // ── BOLUS: bars ──
+  // ── BOLUS ──
   const maxBolus=Math.max(...boluses.map(b=>b.units),0.5);
   boluses.forEach(b=>{
     const bT=b.t.getTime();
     if(bT<minT||bT>maxT) return;
     const x=xOf(bT);
+    if(x<cssLeft||x>cssRight) return;
     const h=Math.max(4,(b.units/maxBolus)*USABLE);
     const bar=document.createElementNS(svgNS,'rect');
     bar.setAttribute('x',x-2);bar.setAttribute('y',INS_BOT-h);
@@ -703,34 +704,28 @@ function renderInsulinLanes(boluses,basals,cgm){
     svg.appendChild(bar);
   });
 
-  // ── LABELS & LEGEND ──
+  // ── LABEL ──
   const lbl=document.createElementNS(svgNS,'text');
-  lbl.setAttribute('x',LEFT-4);lbl.setAttribute('y',INS_H/2+4);
-  lbl.setAttribute('text-anchor','end');lbl.setAttribute('fill','rgba(190,185,210,0.4)');
+  lbl.setAttribute('x',cssLeft-4);lbl.setAttribute('y',INS_H/2+4);
+  lbl.setAttribute('text-anchor','end');lbl.setAttribute('fill','rgba(190,185,210,0.45)');
   lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','600');
   lbl.setAttribute('font-family','-apple-system,sans-serif');
   lbl.textContent='Insulin';svg.appendChild(lbl);
 
+  // ── LEGEND ──
   const leg=[['rgba(167,139,250,0.7)','Basal'],['rgba(0,212,160,0.85)','Bolus']];
-  let lx=LEFT;const legY=INS_H+12;
+  let lx=cssLeft;const legY=INS_BOT+14;
   leg.forEach(([color,label])=>{
     const sw=document.createElementNS(svgNS,'rect');
-    sw.setAttribute('x',lx);sw.setAttribute('y',legY-5);sw.setAttribute('width',10);sw.setAttribute('height',5);sw.setAttribute('rx','1');sw.setAttribute('fill',color);svg.appendChild(sw);
+    sw.setAttribute('x',lx);sw.setAttribute('y',legY-5);
+    sw.setAttribute('width',10);sw.setAttribute('height',5);
+    sw.setAttribute('rx','1');sw.setAttribute('fill',color);svg.appendChild(sw);
     const lt=document.createElementNS(svgNS,'text');
-    lt.setAttribute('x',lx+13);lt.setAttribute('y',legY);lt.setAttribute('fill','rgba(180,175,200,0.7)');lt.setAttribute('font-size','10');lt.setAttribute('font-family','-apple-system,sans-serif');lt.textContent=label;svg.appendChild(lt);
+    lt.setAttribute('x',lx+13);lt.setAttribute('y',legY);
+    lt.setAttribute('fill','rgba(180,175,200,0.75)');lt.setAttribute('font-size','10');
+    lt.setAttribute('font-family','-apple-system,sans-serif');
+    lt.textContent=label;svg.appendChild(lt);
     lx+=label.length*6+24;
-  });
-
-  // Also draw x-axis time ticks matching glucose chart
-  const glucXTicks=glucChart.scales.x?.ticks||[];
-  glucXTicks.forEach(tick=>{
-    const xp=xOf(cgm[0].t.getTime()+(tick.value/(cgm.length-1))*tRange);
-    if(xp<LEFT||xp>RIGHT) return;
-    const tline=document.createElementNS(svgNS,'line');
-    tline.setAttribute('x1',xp);tline.setAttribute('y1',0);
-    tline.setAttribute('x2',xp);tline.setAttribute('y2',INS_H);
-    tline.setAttribute('stroke','rgba(255,255,255,0.04)');tline.setAttribute('stroke-width','1');
-    svg.appendChild(tline);
   });
 }
 
