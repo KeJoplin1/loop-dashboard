@@ -193,9 +193,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:14px;background:rgba(0,212,160,0.85);border-radius:2px;display:inline-block"></span>Bolus</span>
       </div>
       <!-- Glucose chart -->
-      <div id="chart-container" style="position:relative;width:100%;height:240px">
+      <div id="chart-container" style="position:relative;width:100%;height:240px;overflow:visible">
         <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
-        <svg id="bolus-overlay" class="bolus-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:all;overflow:visible"></svg>
+        <svg id="bolus-overlay" class="bolus-overlay" style="position:absolute;top:0;left:0;width:100%;height:calc(100% + 190px);pointer-events:all;overflow:visible;z-index:10"></svg>
       </div>
       <!-- Insulin lane -->
       <div id="insulin-lane-wrap" style="position:relative;width:100%;height:140px;margin-top:2px;margin-bottom:20px">
@@ -673,14 +673,9 @@ function renderInsulinLanes(boluses,basals,cgm){
         if(bolusArr[i]<=0) return;
         const xp=x.getPixelForValue(i);
         const h=Math.max(6,(bolusArr[i]/maxBolus)*(bottom-top)*0.88);
-        ctx.fillStyle='rgba(77,159,255,0.9)';
+        ctx.fillStyle='rgba(0,212,160,0.85)';
         if(ctx.roundRect){ctx.beginPath();ctx.roundRect(xp-3,yZero-h,6,h,2);ctx.fill();}
         else ctx.fillRect(xp-3,yZero-h,6,h);
-        // Label only for boluses ≥ 0.3u to avoid clutter
-        if(bolusArr[i]>=0.3){
-          ctx.fillStyle='#00d4a0';ctx.font='bold 8px -apple-system,sans-serif';
-          ctx.textAlign='center';ctx.fillText(bolusLabels[i],xp,yZero-h-4);
-        }
       });
       ctx.restore();
     }
@@ -979,7 +974,7 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     if(filteredBoluses&&filteredBoluses.length){
       const near5=filteredBoluses.filter(b=>Math.abs(b.t-nearest.t)<5*60000);
       const bolusSum=near5.reduce((s,b)=>s+b.units,0);
-      if(bolusSum>0) html+=`<div class="tt-row"><span style="color:#4d9fff">💉 Bolus ${roundTenth(bolusSum)}u</span></div>`;
+      if(bolusSum>0) html+=`<div class="tt-row"><span style="color:#00d4a0">💉 Bolus ${roundTenth(bolusSum)}u</span></div>`;
     }
     eventList.forEach(ev=>{
       if(Math.abs(ev.xPx-mx)<=SNAP_X){
@@ -1008,8 +1003,9 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     }
     if(xPx==null){line.style.display='none';return;}
     line.style.display='';
+    // Extend crosshair through insulin lane (190px below glucose canvas)
     line.setAttribute('x1',xPx);line.setAttribute('y1',GLUC_TOP);
-    line.setAttribute('x2',xPx);line.setAttribute('y2',GLUC_BOT);
+    line.setAttribute('x2',xPx);line.setAttribute('y2',GLUC_BOT+190);
   }
 
   overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
