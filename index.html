@@ -617,11 +617,11 @@ function renderMetrics(cgm,boluses,basals){
 
 function renderInsulinLanes(boluses,basals,cgm,chart){
   const wrap=document.getElementById('insulin-lane-wrap');
-  if(!wrap){console.error('[Insulin] wrap not found');return;}
-  wrap.style.display='block'; // must show before measuring
+  if(!wrap) return;
+  wrap.style.display='block';
   wrap.innerHTML='';
-  if(!cgm.length||(!basals.length&&!boluses.length)){console.error('[Insulin] no data');return;}
-  if(!chart?.chartArea){console.error('[Insulin] no chartArea');return;}
+  if(!cgm.length||(!basals.length&&!boluses.length)) return;
+  if(!chart?.chartArea) return;
 
   const ca=chart.chartArea;
   const minT=cgm[0].t.getTime();
@@ -629,24 +629,21 @@ function renderInsulinLanes(boluses,basals,cgm,chart){
   const tRange=maxT-minT;
   if(!tRange) return;
 
-  // Convert chartArea internal pixels to CSS pixels
-  const glucCanvas2=document.getElementById('glucChart');
-  const cssWidth=glucCanvas2 ? glucCanvas2.getBoundingClientRect().width : ca.right;
-  const internalWidth=glucCanvas2 ? glucCanvas2.width : ca.right;
-  const scale=internalWidth>0 ? cssWidth/internalWidth : 1;
-  const left=ca.left*scale;
-  const right=ca.right*scale;
+  // chartArea is in CSS pixels directly — no DPR adjustment needed
+  const left=ca.left;
+  const right=ca.right;
   const W=right-left;
   const xOf=t=>left+(t-minT)/tRange*W;
-  console.log('[Insulin] scale:',scale,'left:',left,'right:',right,'W:',W,'H:',H);
 
-  const H=100; // fixed height matching insulin-lane-wrap
+  const H=100;
   const BOT=H-4;
-  const USE=H*0.78;
+  const USE=H*0.80;
+  const wrapW=wrap.parentElement?.clientWidth||1000;
 
   const svgNS='http://www.w3.org/2000/svg';
   const svg=document.createElementNS(svgNS,'svg');
-  svg.style.cssText='width:100%;height:'+(H+20)+'px;display:block;overflow:visible';
+  svg.setAttribute('width',wrapW);
+  svg.setAttribute('height',H+20);
   svg.style.cssText='display:block;overflow:visible';
   wrap.appendChild(svg);
 
