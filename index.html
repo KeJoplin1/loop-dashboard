@@ -733,7 +733,15 @@ function renderInsulinLanes(boluses,basals,cgm){
         tooltip:{callbacks:{label:ctx=>ctx.datasetIndex===0?'Basal: '+ctx.parsed.y.toFixed(2)+'u/hr':''}}
       },
       scales:{
-        x:{ticks:{maxTicksLimit:8,autoSkipPadding:20,maxRotation:0,color:'#505058',font:{size:9},callback:(v,i)=>labels[i]||null},
+        x:{ticks:{maxTicksLimit:8,autoSkipPadding:20,maxRotation:0,color:'#505058',font:{size:9},
+            callback:(v,i,tks)=>{
+              // Match glucose chart tick density
+              const n=tks.length;const total=labels.length;
+              if(n<=1) return labels[i]||null;
+              // Show label only at evenly spaced positions matching glucose chart
+              const step=Math.round(total/(n-1));
+              return i%step===0?labels[i]||null:null;
+            }},
           grid:{color:grid,drawTicks:false}},
         y:{display:false,min:0,max:maxRate*1.3,grid:{display:false}}
       },
@@ -841,6 +849,8 @@ function renderGlucoseChart(cgm){
       },
       animation:{onComplete:()=>{
         renderEventOverlay(glucChart,s,showMeals,showExercise,filteredMeals,filteredBoluses,filteredExercise);
+        // Store glucose tick timestamps for insulin chart alignment
+        window._glucTicks=glucChart.scales.x.ticks.map(t=>({label:t.label,value:t.value}));
       }}
     }
   });
@@ -938,7 +948,7 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
       const PY=GLUC_TOP+4;
 
       // Line through entire height — glucose area + pill zone + insulin lane
-      const lineBot=GLUC_BOT+46;
+      const lineBot=GLUC_BOT;
       const ln=document.createElementNS(svgNS,'line');
       ln.setAttribute('x1',x);ln.setAttribute('y1',GLUC_TOP);
       ln.setAttribute('x2',x);ln.setAttribute('y2',lineBot);
@@ -986,6 +996,19 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     const timeStr=nearest.t.toLocaleDateString([],{month:'short',day:'numeric'})+' '+nearest.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     const gc=nearest.v<LOW?'#ff4d6d':nearest.v>HIGH?'#ffb347':'#00d4a0';
     let html=`<div class="tt-time">${timeStr}</div><div class="tt-gluc" style="color:${gc}">${nearest.v} <span style="font-size:10px;font-weight:400;color:var(--text3)">mg/dL</span></div>`;
+    // Add basal rate at this time
+    if(filteredBasals&&filteredBasals.length){
+      const bsorted=[...filteredBasals].sort((a,b)=>a.t-b.t);
+      let bRate=0;for(const b of bsorted){if(b.t<=nearest.t) bRate=b.rate||0; else break;}
+      if(bRate>0) html+=`<div class="tt-row"><span style="color:#a78bfa">▬ Basal ${bRate.toFixed(2)}u/hr</span></div>`;
+    }
+    // Add any boluses within ±5 min
+    if(filteredBoluses&&filteredBoluses.length){
+      const near5=filteredBoluses.filter(b=>Math.abs(b.t-nearest.t)<5*60000);
+      near5.filter(b=>b.units>=0.5).forEach(b=>html+=`<div class="tt-row"><span style="color:#4d9fff">💉 Manual ${b.units.toFixed(2)}u</span></div>`);
+      const autoSum=near5.filter(b=>b.units<0.5).reduce((s,b)=>s+b.units,0);
+      if(autoSum>0) html+=`<div class="tt-row"><span style="color:#00d4a0">⚡ Auto ${autoSum.toFixed(2)}u</span></div>`;
+    }
     eventList.forEach(ev=>{
       if(Math.abs(ev.xPx-mx)<=SNAP_X){
         if(ev.type==='bolus') html+=`<div class="tt-row"><span style="color:${BOLUS_COLOR}">💉 ${ev.units}u bolus</span></div>`;
@@ -1078,7 +1101,7 @@ function renderTDDChart(boluses,basals){
     const basal=basalData[0]||0;
     const pBolus=tdd>0?Math.round(bolus/tdd*100):0;
     const pBasal=100-pBolus;
-    tddWrap.innerHTML=`<div style="display:grid;grid-template-columns:auto 1fr;align-items:center;height:100%;gap:12px;padding:4px 0">
+    tddWrap.innerHTML=`<div style="display:flex;justify-content:center;align-items:center;height:100%;gap:20px;padding:4px 0">
       <div style="position:relative;width:150px;height:150px;flex-shrink:0">
         <canvas id="tddPieChart" style="width:100%;height:100%"></canvas>
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">
