@@ -630,22 +630,24 @@ function renderInsulinLanes(boluses,basals,cgm,chart){
   const tRange=maxT-minT;
   if(!tRange) return;
 
-  // chartArea is in canvas internal pixels. Convert to CSS pixels via devicePixelRatio.
-  const dpr=window.devicePixelRatio||1;
-  const left=ca.left/dpr;
-  const right=ca.right/dpr;
+  // Convert chartArea internal pixels to CSS pixels
+  const glucCanvas2=document.getElementById('glucChart');
+  const cssWidth=glucCanvas2 ? glucCanvas2.getBoundingClientRect().width : ca.right;
+  const internalWidth=glucCanvas2 ? glucCanvas2.width : ca.right;
+  const scale=internalWidth>0 ? cssWidth/internalWidth : 1;
+  const left=ca.left*scale;
+  const right=ca.right*scale;
   const W=right-left;
   const xOf=t=>left+(t-minT)/tRange*W;
+  console.log('[Insulin] scale:',scale,'left:',left,'right:',right,'W:',W,'H:',H);
 
-  const H=wrap.offsetHeight||90;
-  const BOT=H-2;
-  const USE=H*0.80;
+  const H=100; // fixed height matching insulin-lane-wrap
+  const BOT=H-4;
+  const USE=H*0.78;
 
   const svgNS='http://www.w3.org/2000/svg';
-  // SVG width = full wrap width; drawing starts at left=ca.left/dpr
   const svg=document.createElementNS(svgNS,'svg');
-  svg.setAttribute('width','100%');
-  svg.setAttribute('height',H+20);
+  svg.style.cssText='width:100%;height:'+(H+20)+'px;display:block;overflow:visible';
   svg.style.cssText='display:block;overflow:visible';
   wrap.appendChild(svg);
 
