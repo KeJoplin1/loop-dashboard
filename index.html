@@ -641,7 +641,7 @@ function renderGlucoseChart(cgm) {
   const showBand = document.getElementById('show-band')?.checked;
 
   const datasets = [{
-    data: s.map(d => d.v),
+    data: s.map(d => ({x: d.t.getTime(), y: d.v})),
     borderWidth: 1.5, pointRadius: 0, tension: 0.2, fill: false,
     segment: { borderColor: ctx => {
       const v = s[ctx.p1DataIndex]?.v;
@@ -651,13 +651,13 @@ function renderGlucoseChart(cgm) {
   }];
 
   if (showBand) {
-    datasets.push({ data: s.map(() => HIGH_TIR), borderColor: 'rgba(255,179,71,0.25)', borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false, datalabels: { display: false } });
-    datasets.push({ data: s.map(() => LOW), borderColor: 'rgba(255,77,109,0.25)', borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false, datalabels: { display: false } });
+    datasets.push({ data: s.map(d => ({x: d.t.getTime(), y: HIGH_TIR})), borderColor: 'rgba(255,179,71,0.25)', borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false, datalabels: { display: false } });
+    datasets.push({ data: s.map(d => ({x: d.t.getTime(), y: LOW})), borderColor: 'rgba(255,77,109,0.25)', borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false, datalabels: { display: false } });
   }
 
   if (showDots) {
     datasets.push({
-      data: s.map(d => d.v < LOW || d.v > HIGH_TIR ? d.v : null),
+      data: s.map(d => ({x: d.t.getTime(), y: d.v < LOW || d.v > HIGH_TIR ? d.v : null})),
       borderColor: 'transparent',
       pointRadius: s.map(d => d.v < LOW || d.v > HIGH_TIR ? 3 : 0),
       pointBackgroundColor: s.map(d => d.v < LOW ? '#ff4d6d' : '#ffb347'),
@@ -666,7 +666,7 @@ function renderGlucoseChart(cgm) {
   }
 
   const grid = 'rgba(255,255,255,0.05)';
-  const labels = s.map(d => d.t);
+  const labels = s.map(d => d.t.getTime());
 
   _traceChart = new Chart(document.getElementById('glucChart'), {
     type: 'line',
@@ -678,15 +678,18 @@ function renderGlucoseChart(cgm) {
       plugins: { legend: { display: false }, datalabels: { display: false }, tooltip: { enabled: false } },
       scales: {
         x: {
-          type: 'category',
-          ticks: { maxTicksLimit: 8, maxRotation: 0, color: '#505058', font: { size: 9 },
-            callback: (v, i) => {
-              const d = s[i]?.t;
-              if (!d) return '';
+          type: 'linear',
+          min: s[0].t.getTime(),
+          max: s[s.length-1].t.getTime(),
+          ticks: {
+            maxTicksLimit: 8, maxRotation: 0, color: '#505058', font: { size: 9 },
+            callback: (v) => {
+              const d = new Date(v);
               const h = d.getHours(), m = d.getMinutes();
+              if(m !== 0) return null;
               const hh = h % 12 || 12, ampm = h >= 12 ? 'pm' : 'am';
               const dateStr = currentDays > 1 ? (d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') : '';
-              return m === 0 ? dateStr + hh + ampm : '';
+              return dateStr + hh + ampm;
             }
           },
           grid: { color: grid }
@@ -712,12 +715,15 @@ function _drawTraceOverlay(cgmSampled, showMeals, showExercise) {
   const meta = _traceChart.getDatasetMeta(0);
 
   // x pixel from chart meta (exact Chart.js position)
-  const xPxOf = i => meta.data[i]?.x ?? null;
+  const xPxOf = i => {
+    const pt = meta.data[i];
+    return pt ? pt.x : null;
+  };
   // x pixel from timestamp (for non-CGM events)
-  const minT = cgmSampled[0].t.getTime();
-  const maxT = cgmSampled[cgmSampled.length - 1].t.getTime();
-  const tRange = maxT - minT;
-  const xOfT = t => ca.left + (t - minT) / tRange * (ca.right - ca.left);
+  const xOfT = t => {
+    const scale = _traceChart.scales.x;
+    return scale ? scale.getPixelForValue(t) : ca.left;
+  };
   const yOfV = v => _traceChart.scales.y.getPixelForValue(Math.min(Math.max(v, 40), 225));
 
   const MEAL_COLOR = '#f472b6';
@@ -806,15 +812,18 @@ function _setupTraceInteraction(cgmSampled, xPxOf, xOfT, yOfV, ca, minT, maxT, t
   function nearestCGM(xClient) {
     const rect = wrap.getBoundingClientRect();
     const mx = xClient - rect.left;
-    // Find nearest CGM point by pixel position
+    if(mx < ca.left || mx > ca.right) return null;
+    // Convert pixel to timestamp using linear scale
+    const scale = _traceChart?.scales?.x;
+    if(!scale) return null;
+    const ts = scale.getValueForPixel(mx);
+    // Find nearest CGM reading by timestamp
     let best = null, bestD = Infinity;
-    cgmSampled.forEach((d, i) => {
-      const px = xPxOf(i);
-      if (px === null) return;
-      const dist = Math.abs(px - mx);
-      if (dist < bestD) { bestD = dist; best = d; }
+    cgmSampled.forEach(d => {
+      const dist = Math.abs(d.t.getTime() - ts);
+      if(dist < bestD) { bestD = dist; best = d; }
     });
-    return bestD < 60 ? best : null; // only snap if within 60px
+    return best;
   }
 
   function handleMove(e) {
@@ -828,9 +837,9 @@ function _setupTraceInteraction(cgmSampled, xPxOf, xOfT, yOfV, ca, minT, maxT, t
       return;
     }
 
-    // Get exact pixel x of the nearest CGM point
-    const nearIdx = cgmSampled.indexOf(nearest);
-    const xPx = xPxOf(nearIdx) ?? xOfT(nearest.t.getTime());
+    // Get exact pixel x using the linear scale
+    const scale = _traceChart?.scales?.x;
+    const xPx = scale ? scale.getPixelForValue(nearest.t.getTime()) : ca.left;
 
     // Draw crosshair from top of glucose chart to bottom of insulin canvas
     xhair.setAttribute('x1', xPx); xhair.setAttribute('y1', ca.top);
@@ -897,8 +906,13 @@ function _drawInsulinChart(boluses, basals, cgm) {
   const tRange = maxT - minT;
   if (!tRange) return;
 
-  // Use the SAME x-axis formula as the glucose chart
-  const xOfT = t => ca.left + (t - minT) / tRange * (ca.right - ca.left);
+  // Linear x mapping — same domain as glucose chart linear scale
+  const xOfT = t => {
+    const ica = _insulinChart2?.chartArea || ca;
+    const scale = _insulinChart2?.scales?.x;
+    if(scale) return scale.getPixelForValue(t);
+    return ca.left + (t - minT) / tRange * (ca.right - ca.left);
+  };
 
   const canvas = document.getElementById('insulinChart');
   if (!canvas) return;
@@ -974,8 +988,8 @@ function _drawInsulinChart(boluses, basals, cgm) {
   _insulinChart2 = new Chart(canvas, {
     type: 'line',
     data: {
-      labels: sampledCGM.map(d => d.t),
-      datasets: [{ data: sampledCGM.map(() => null), datalabels: { display: false } }]
+      labels: sampledCGM.map(d => d.t.getTime()),
+      datasets: [{ data: sampledCGM.map(d => ({x: d.t.getTime(), y: null})), datalabels: { display: false } }]
     },
     plugins: [insulinPlugin],
     options: {
@@ -985,16 +999,18 @@ function _drawInsulinChart(boluses, basals, cgm) {
       plugins: { legend: { display: false }, datalabels: { display: false }, tooltip: { enabled: false } },
       scales: {
         x: {
-          type: 'category',
+          type: 'linear',
+          min: cgm[0].t.getTime(),
+          max: cgm[cgm.length-1].t.getTime(),
           ticks: {
             maxTicksLimit: 8, maxRotation: 0, color: '#505058', font: { size: 9 },
-            callback: (v, i) => {
-              const d = sampledCGM[i]?.t;
-              if (!d) return '';
+            callback: (v) => {
+              const d = new Date(v);
               const h = d.getHours(), m = d.getMinutes();
-              if (m !== 0 || h % tickHrs !== 0) return '';
+              if(m !== 0) return null;
               const hh = h % 12 || 12, ampm = h >= 12 ? 'pm' : 'am';
-              return (currentDays > 1 ? d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' : '') + hh + ampm;
+              const dateStr = currentDays > 1 ? (d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') : '';
+              return dateStr + hh + ampm;
             }
           },
           grid: { color: 'rgba(255,255,255,0.04)' }
