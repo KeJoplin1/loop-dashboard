@@ -193,9 +193,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:14px;background:rgba(0,212,160,0.85);border-radius:2px;display:inline-block"></span>Bolus</span>
       </div>
       <!-- Glucose chart -->
-      <div id="chart-container" style="position:relative;width:100%;height:240px;overflow:visible">
+      <div id="chart-container" style="position:relative;width:100%;height:240px">
         <canvas id="glucChart" role="img" aria-label="Glucose trace" style="width:100%;height:100%"></canvas>
-        <svg id="bolus-overlay" class="bolus-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:all;overflow:visible;z-index:10"></svg>
+        <svg id="bolus-overlay" class="bolus-overlay" style="position:absolute;top:0;left:0;width:100%;height:380px;pointer-events:all;overflow:visible;z-index:10;pointer-events:none"></svg>
       </div>
       <!-- Insulin lane -->
       <div id="insulin-lane-wrap" style="position:relative;width:100%;height:100px;margin-top:2px">
@@ -916,7 +916,7 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
 
     // Boluses within ±1 CGM interval (5 min) of the NEAREST data point only
     if(filteredBoluses&&filteredBoluses.length){
-      const BOLUS_WINDOW=5*60000; // exactly ±5 min around nearest point
+      const BOLUS_WINDOW=3*60000; // ±3 min — one CGM interval
       const nearB=filteredBoluses.filter(b=>Math.abs(b.t.getTime()-nearest.t.getTime())<BOLUS_WINDOW);
       const bolusSum=nearB.reduce((s,b)=>s+b.units,0);
       if(bolusSum>0) html+=`<div class="tt-row"><span style="color:#00d4a0">💉 Bolus ${roundTenth(bolusSum)}u</span></div>`;
@@ -953,14 +953,16 @@ function renderEventOverlay(chart,cgmSampled,showMeals,showExercise,meals,boluse
     // Extend crosshair through insulin lane (190px below glucose canvas)
     // Calculate insulin lane bottom from wrap height
     line.setAttribute('x1',xPx);line.setAttribute('y1',GLUC_TOP);
-    line.setAttribute('x2',xPx);line.setAttribute('y2',GLUC_BOT);
+    line.setAttribute('x2',xPx);line.setAttribute('y2',370);  // extends through insulin lane
   }
 
-  overlay.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
-  overlay.onmouseleave=()=>{tooltip.style.display='none';drawCrosshair(null);};
+  // SVG is pointer-events:none so use canvas for mouse events
   const canvas=document.getElementById('glucChart');
-  canvas.onmousemove=e=>{const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);};
-  canvas.onmouseleave=()=>{tooltip.style.display='none';drawCrosshair(null);};
+  const insWrap=document.getElementById('insulin-lane-wrap');
+  function handleMove(e){const r=overlay.getBoundingClientRect();showTooltip(e,e.clientX-r.left);}
+  function handleLeave(){tooltip.style.display='none';drawCrosshair(null);}
+  canvas.onmousemove=handleMove; canvas.onmouseleave=handleLeave;
+  if(insWrap){insWrap.onmousemove=handleMove; insWrap.onmouseleave=handleLeave;}
 }
 
 function renderTIR(cgm){
