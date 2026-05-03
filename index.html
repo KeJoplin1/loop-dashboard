@@ -676,8 +676,9 @@ function renderTraceChart() {
         const n = cgm.reduce((a,d) => Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
         return { x: m.t.getTime(), y: n.v, carbs: m.carbs };
       }),
-      type: 'scatter', pointStyle: 'triangle', pointRadius: 8,
-      pointBackgroundColor: '#f472b6', datalabels: { display: false }
+      type: 'scatter', pointStyle: 'triangle', pointRadius: 10, hoverRadius: 18,
+      pointBackgroundColor: '#f472b6',
+      pointBorderColor: 'rgba(244,114,182,0.3)', pointBorderWidth: 8, datalabels: { display: false }
     });
   }
 
@@ -685,9 +686,9 @@ function renderTraceChart() {
   const insPlugin = {
     id: 'ins',
     afterDraw(chart) {
-      const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
       const H      = bottom - top;
-      const SEP_Y  = top + H * 0.78;   // separator at 78% → insulin in bottom 22%
+      const SEP_Y  = top + H * 0.78;
       const INS_H  = bottom - SEP_Y;
       const xOf    = t => x.getPixelForValue(t);
       const yRate  = r => bottom - (r / maxRate)  * INS_H * 0.82;
@@ -695,59 +696,103 @@ function renderTraceChart() {
 
       ctx.save();
 
-      // Separator + label
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth   = 1;
+      // ── Separator ───────────────────────────────────────────────────────
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(left, SEP_Y); ctx.lineTo(right, SEP_Y); ctx.stroke();
-      ctx.fillStyle   = 'rgba(200,195,215,0.4)';
-      ctx.font        = '600 9px -apple-system,sans-serif';
-      ctx.textAlign   = 'right';
-      ctx.fillText('Insulin', left - 4, SEP_Y - 5);
 
-      // Clip to insulin zone
-      ctx.beginPath();
-      ctx.rect(left, SEP_Y, right - left, INS_H + 1);
-      ctx.clip();
+      // ── "Insulin" label inside the lane (not outside where it clips) ────
+      ctx.fillStyle = 'rgba(200,195,215,0.45)';
+      ctx.font = '600 9px -apple-system,sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Insulin', left + 4, SEP_Y + 12);
 
-      // Basal fill
-      ctx.fillStyle = 'rgba(167,139,250,0.25)';
+      // ── Clip to insulin zone ────────────────────────────────────────────
+      ctx.beginPath(); ctx.rect(left, SEP_Y, right - left, INS_H + 1); ctx.clip();
+
+      // ── Basal fill ──────────────────────────────────────────────────────
+      ctx.fillStyle = 'rgba(167,139,250,0.22)';
       ctx.beginPath();
       let started = false;
       bs.forEach((b, i) => {
         const x1 = Math.max(xOf(b.t.getTime()), left);
         const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
         if (x2 <= x1 + 0.5) return;
-        const y = yRate(b.rate || 0);
-        if (!started) { ctx.moveTo(x1, bottom); ctx.lineTo(x1, y); started = true; }
-        else ctx.lineTo(x1, y);
-        ctx.lineTo(x2, y);
+        const yr = yRate(b.rate || 0);
+        if (!started) { ctx.moveTo(x1, bottom); ctx.lineTo(x1, yr); started = true; }
+        else ctx.lineTo(x1, yr);
+        ctx.lineTo(x2, yr);
       });
       if (started) { ctx.lineTo(right, bottom); ctx.closePath(); ctx.fill(); }
 
-      // Basal line
+      // ── Basal line ──────────────────────────────────────────────────────
       ctx.strokeStyle = 'rgba(167,139,250,0.8)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); started = false;
       bs.forEach((b, i) => {
         const x1 = Math.max(xOf(b.t.getTime()), left);
         const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
         if (x2 <= x1 + 0.5) return;
-        const y = yRate(b.rate || 0);
-        if (!started) { ctx.moveTo(x1, y); started = true; } else ctx.lineTo(x1, y);
-        ctx.lineTo(x2, y);
+        const yr = yRate(b.rate || 0);
+        if (!started) { ctx.moveTo(x1, yr); started = true; } else ctx.lineTo(x1, yr);
+        ctx.lineTo(x2, yr);
       });
       ctx.stroke();
 
-      // Bolus bars
+      // ── Bolus bars ──────────────────────────────────────────────────────
       boluses.forEach(b => {
         const bx = xOf(b.t.getTime());
         if (bx < left || bx > right) return;
         const barH = bottom - yBolus(b.units);
         ctx.fillStyle = 'rgba(0,212,160,0.85)';
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(bx - 2, bottom - barH, 4, barH, 2);
-        else ctx.rect(bx - 2, bottom - barH, 4, barH);
+        if (ctx.roundRect) ctx.roundRect(bx - 3, bottom - barH, 6, barH, 2);
+        else ctx.rect(bx - 3, bottom - barH, 6, barH);
         ctx.fill();
       });
+
+      ctx.restore();
+
+      // ── Crosshair + cursor dots (drawn AFTER restore so not clipped) ────
+      const activeItem = chart.tooltip?._active?.[0];
+      if (!activeItem) return;
+      const cxPx = activeItem.element.x;
+      if (cxPx < left || cxPx > right) return;
+
+      ctx.save();
+
+      // Vertical crosshair line — full height of both zones
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(cxPx, top); ctx.lineTo(cxPx, bottom); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Glucose dot at cursor position
+      const glucoseY = activeItem.element.y;
+      const glucVal  = cgm[activeItem.index]?.v ?? 0;
+      const glucCol  = glucVal < LOW ? '#ff4d6d' : glucVal > HIGH_TIR ? '#ffb347' : '#00d4a0';
+      ctx.fillStyle   = glucCol;
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth   = 2;
+      ctx.beginPath(); ctx.arc(cxPx, glucoseY, 5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+      // Basal dot in insulin lane
+      const ts = x.getValueForPixel(cxPx);
+      const sorted2 = bs;
+      let activeBasal = null;
+      for (let i = 0; i < sorted2.length; i++) {
+        const segStart = sorted2[i].t.getTime();
+        const segEnd   = i < sorted2.length-1 ? sorted2[i+1].t.getTime() : segStart + 30*60000;
+        if (ts >= segStart && ts < segEnd) { activeBasal = sorted2[i]; break; }
+      }
+      if (activeBasal) {
+        const bDotY = yRate(activeBasal.rate || 0);
+        if (bDotY >= SEP_Y && bDotY <= bottom) {
+          ctx.fillStyle   = '#a78bfa';
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+          ctx.lineWidth   = 2;
+          ctx.beginPath(); ctx.arc(cxPx, bDotY, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+      }
 
       ctx.restore();
     }
@@ -816,11 +861,25 @@ function renderTraceChart() {
               if (!items.length) return [];
               const ts  = items[0].parsed.x;
               const out = [];
-              // Basal at this time
+              // Basal: find the active segment at this timestamp
+              // A segment is only active if the cursor is within it
+              // (between its start and the NEXT segment's start)
               const sorted = [...basals].sort((a,b) => a.t - b.t);
-              let rate = 0;
-              for (const b of sorted) { if (b.t.getTime() <= ts) rate = b.rate||0; else break; }
-              if (rate > 0) out.push(' ▬ Basal ' + rate.toFixed(2) + ' u/hr');
+              let activeRate = null;
+              for (let i = 0; i < sorted.length; i++) {
+                const segStart = sorted[i].t.getTime();
+                const segEnd   = i < sorted.length-1 ? sorted[i+1].t.getTime() : segStart + 30*60000;
+                if (ts >= segStart && ts < segEnd) {
+                  activeRate = sorted[i].rate || 0;
+                  break;
+                }
+              }
+              // Only show basal if cursor is within an actual segment (not a gap)
+              if (activeRate !== null && activeRate > 0) {
+                out.push(' ▬ Basal ' + activeRate.toFixed(2) + ' u/hr');
+              } else if (activeRate === 0) {
+                out.push(' ⏸ Basal suspended');
+              }
               // Bolus within ±2.5 min
               const nearB = boluses.filter(b => Math.abs(b.t.getTime() - ts) < 2.5*60000);
               const sum   = nearB.reduce((s,b) => s + b.units, 0);
