@@ -629,238 +629,233 @@ function renderGlucoseChart(cgm) { renderTraceChart(); }
 function renderTraceChart() {
   if (_tc) { _tc.destroy(); _tc = null; }
 
-  const cgm = filteredCGM;
+  const cgm     = filteredCGM;
   const boluses = filteredBoluses;
-  const basals = filteredBasals;
-  const meals = filteredMeals;
-  const exercise = filteredExercise;
+  const basals  = filteredBasals;
+  const meals   = filteredMeals;
+  const exercise= filteredExercise;
   if (!cgm.length) return;
 
-  const HIGH_TIR = tirMode === 'tight' ? 140 : HIGH;
-  const showBand = document.getElementById('show-band')?.checked !== false;
-  const showMeals = document.getElementById('show-meals')?.checked !== false;
-  const showExercise = document.getElementById('show-exercise')?.checked !== false;
+  const HIGH_TIR    = tirMode === 'tight' ? 140 : HIGH;
+  const showBand    = document.getElementById('show-band')?.checked !== false;
+  const showMeals   = document.getElementById('show-meals')?.checked !== false;
+  const showExercise= document.getElementById('show-exercise')?.checked !== false;
 
-  // ── Build all datasets ──────────────────────────────────────────────────────
+  const xMin = cgm[0].t.getTime();
+  const xMax = cgm[cgm.length-1].t.getTime();
+  const bs    = [...basals].sort((a,b) => a.t - b.t);
+  const maxRate  = Math.max(...bs.map(b => b.rate || 0), 0.1);
+  const maxBolus = Math.max(...boluses.map(b => b.units), 0.5);
 
+  // ── Datasets (glucose + meals only — insulin drawn by plugin) ─────────────
   const datasets = [];
 
-  // 1. GLUCOSE LINE — colored segment by range
   datasets.push({
     label: 'Glucose',
     data: cgm.map(d => ({ x: d.t.getTime(), y: d.v })),
-    yAxisID: 'yGluc',
-    type: 'line',
-    borderWidth: 1.8,
-    pointRadius: 0,
-    tension: 0.15,
-    fill: false,
-    segment: {
-      borderColor: ctx => {
-        const v = ctx.p1.parsed.y;
-        return v < LOW ? '#ff4d6d' : v > HIGH_TIR ? '#ffb347' : '#00d4a0';
-      }
-    },
-    order: 1,
+    type: 'line', borderWidth: 2, pointRadius: 0, tension: 0.15, fill: false,
+    segment: { borderColor: ctx => {
+      const v = ctx.p1.parsed.y;
+      return v < LOW ? '#ff4d6d' : v > HIGH_TIR ? '#ffb347' : '#00d4a0';
+    }},
     datalabels: { display: false }
   });
 
-  // 2. TARGET BAND LINES
   if (showBand) {
-    const xMin = cgm[0].t.getTime(), xMax = cgm[cgm.length-1].t.getTime();
-    datasets.push({
-      label: '_hiband',
-      data: [{ x: xMin, y: HIGH_TIR }, { x: xMax, y: HIGH_TIR }],
-      yAxisID: 'yGluc', type: 'line',
-      borderColor: 'rgba(255,179,71,0.3)', borderWidth: 1, borderDash: [5, 5],
-      pointRadius: 0, fill: false, order: 10, datalabels: { display: false }
-    });
-    datasets.push({
-      label: '_loband',
-      data: [{ x: xMin, y: LOW }, { x: xMax, y: LOW }],
-      yAxisID: 'yGluc', type: 'line',
-      borderColor: 'rgba(255,77,109,0.3)', borderWidth: 1, borderDash: [5, 5],
-      pointRadius: 0, fill: false, order: 10, datalabels: { display: false }
-    });
+    [{y: HIGH_TIR, c: 'rgba(255,179,71,0.25)'}, {y: LOW, c: 'rgba(255,77,109,0.25)'}].forEach(({y, c}) =>
+      datasets.push({ label: '_band', data: [{x:xMin,y},{x:xMax,y}], type:'line',
+        borderColor:c, borderWidth:1, borderDash:[5,5], pointRadius:0, fill:false,
+        datalabels:{display:false} })
+    );
   }
 
-  // 3. MEAL MARKERS — vertical scatter at glucose level
   if (showMeals && meals.length) {
-    // Find glucose value at each meal time
-    const mealPts = meals.map(m => {
-      const near = cgm.reduce((b, d) => Math.abs(d.t - m.t) < Math.abs(b.t - m.t) ? d : b);
-      return { x: m.t.getTime(), y: near.v, carbs: m.carbs };
-    });
     datasets.push({
       label: 'Meal',
-      data: mealPts,
-      yAxisID: 'yGluc', type: 'scatter',
-      pointStyle: 'triangle',
-      pointRadius: 7, pointBackgroundColor: '#f472b6',
-      order: 2, datalabels: { display: false }
+      data: meals.map(m => {
+        const n = cgm.reduce((a,d) => Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
+        return { x: m.t.getTime(), y: n.v, carbs: m.carbs };
+      }),
+      type: 'scatter', pointStyle: 'triangle', pointRadius: 8,
+      pointBackgroundColor: '#f472b6', datalabels: { display: false }
     });
   }
 
-  // 4. BASAL RATE — filled area on right y-axis, in the LOWER portion of chart
-  if (basals.length) {
-    const bs = [...basals].sort((a, b) => a.t - b.t);
-    // Step function: duplicate each point at next segment start
-    const basalPts = [];
-    bs.forEach((b, i) => {
-      basalPts.push({ x: b.t.getTime(), y: b.rate || 0 });
-      if (i < bs.length - 1) {
-        basalPts.push({ x: bs[i+1].t.getTime() - 1, y: b.rate || 0 });
-      }
-    });
-    datasets.push({
-      label: 'Basal',
-      data: basalPts,
-      yAxisID: 'yIns', type: 'line',
-      borderColor: 'rgba(167,139,250,0.7)', borderWidth: 1.5,
-      backgroundColor: 'rgba(167,139,250,0.2)',
-      pointRadius: 0, fill: 'origin', tension: 0,
-      order: 5, datalabels: { display: false }
-    });
-  }
+  // ── Insulin plugin — draws in the bottom 22% of chartArea ─────────────────
+  const insPlugin = {
+    id: 'ins',
+    afterDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+      const H      = bottom - top;
+      const SEP_Y  = top + H * 0.78;   // separator at 78% → insulin in bottom 22%
+      const INS_H  = bottom - SEP_Y;
+      const xOf    = t => x.getPixelForValue(t);
+      const yRate  = r => bottom - (r / maxRate)  * INS_H * 0.82;
+      const yBolus = u => bottom - (u / maxBolus) * INS_H * 0.92;
 
-  // 5. BOLUS — bars on right y-axis
-  if (boluses.length) {
-    datasets.push({
-      label: 'Bolus',
-      data: boluses.map(b => ({ x: b.t.getTime(), y: b.units })),
-      yAxisID: 'yIns', type: 'bar',
-      backgroundColor: 'rgba(0,212,160,0.85)',
-      barThickness: 4,
-      order: 3, datalabels: { display: false }
-    });
-  }
+      ctx.save();
 
-  // 6. EXERCISE BANDS — draw as annotations via beforeDraw plugin
-  const exercisePlugin = {
-    id: 'exercise',
+      // Separator + label
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath(); ctx.moveTo(left, SEP_Y); ctx.lineTo(right, SEP_Y); ctx.stroke();
+      ctx.fillStyle   = 'rgba(200,195,215,0.4)';
+      ctx.font        = '600 9px -apple-system,sans-serif';
+      ctx.textAlign   = 'right';
+      ctx.fillText('Insulin', left - 4, SEP_Y - 5);
+
+      // Clip to insulin zone
+      ctx.beginPath();
+      ctx.rect(left, SEP_Y, right - left, INS_H + 1);
+      ctx.clip();
+
+      // Basal fill
+      ctx.fillStyle = 'rgba(167,139,250,0.25)';
+      ctx.beginPath();
+      let started = false;
+      bs.forEach((b, i) => {
+        const x1 = Math.max(xOf(b.t.getTime()), left);
+        const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
+        if (x2 <= x1 + 0.5) return;
+        const y = yRate(b.rate || 0);
+        if (!started) { ctx.moveTo(x1, bottom); ctx.lineTo(x1, y); started = true; }
+        else ctx.lineTo(x1, y);
+        ctx.lineTo(x2, y);
+      });
+      if (started) { ctx.lineTo(right, bottom); ctx.closePath(); ctx.fill(); }
+
+      // Basal line
+      ctx.strokeStyle = 'rgba(167,139,250,0.8)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); started = false;
+      bs.forEach((b, i) => {
+        const x1 = Math.max(xOf(b.t.getTime()), left);
+        const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
+        if (x2 <= x1 + 0.5) return;
+        const y = yRate(b.rate || 0);
+        if (!started) { ctx.moveTo(x1, y); started = true; } else ctx.lineTo(x1, y);
+        ctx.lineTo(x2, y);
+      });
+      ctx.stroke();
+
+      // Bolus bars
+      boluses.forEach(b => {
+        const bx = xOf(b.t.getTime());
+        if (bx < left || bx > right) return;
+        const barH = bottom - yBolus(b.units);
+        ctx.fillStyle = 'rgba(0,212,160,0.85)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx - 2, bottom - barH, 4, barH, 2);
+        else ctx.rect(bx - 2, bottom - barH, 4, barH);
+        ctx.fill();
+      });
+
+      ctx.restore();
+    }
+  };
+
+  // ── Exercise bands ────────────────────────────────────────────────────────
+  const exPlugin = {
+    id: 'ex',
     beforeDraw(chart) {
       if (!showExercise || !exercise.length) return;
       const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
       ctx.save();
       exercise.forEach(ex => {
-        const x1 = x.getPixelForValue(ex.t.getTime());
-        const x2 = x.getPixelForValue(ex.t.getTime() + ex.dur * 60000);
-        if (x2 < x.left || x1 > x.right) return;
-        ctx.fillStyle = 'rgba(103,232,249,0.07)';
-        ctx.fillRect(Math.max(x1, x.left), top, Math.min(x2, x.right) - Math.max(x1, x.left), bottom - top);
-        ctx.strokeStyle = 'rgba(103,232,249,0.4)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(Math.max(x1, x.left), top); ctx.lineTo(Math.max(x1, x.left), bottom); ctx.stroke();
-        ctx.fillStyle = 'rgba(103,232,249,0.8)';
-        ctx.font = 'bold 9px -apple-system,sans-serif';
-        ctx.fillText('🏃 ' + Math.round(ex.dur) + 'm', Math.max(x1, x.left) + 4, top + 12);
+        const x1 = Math.max(x.getPixelForValue(ex.t.getTime()), x.left);
+        const x2 = Math.min(x.getPixelForValue(ex.t.getTime() + ex.dur*60000), x.right);
+        if (x2 <= x1) return;
+        ctx.fillStyle   = 'rgba(103,232,249,0.07)';
+        ctx.fillRect(x1, top, x2-x1, bottom-top);
+        ctx.strokeStyle = 'rgba(103,232,249,0.5)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x1,top); ctx.lineTo(x1,bottom); ctx.stroke();
+        ctx.fillStyle   = 'rgba(103,232,249,0.85)';
+        ctx.font        = 'bold 9px -apple-system,sans-serif';
+        ctx.fillText('🏃 '+Math.round(ex.dur)+'m', x1+4, top+12);
       });
       ctx.restore();
     }
   };
 
-  // ── Axis separator line ──────────────────────────────────────────────────────
-  const separatorPlugin = {
-    id: 'separator',
-    afterDraw(chart) {
-      const { ctx, chartArea: { left, right }, scales: { yIns } } = chart;
-      const y = yIns.getPixelForValue(0);
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([]);
-      ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
-      // Label
-      ctx.fillStyle = 'rgba(200,195,215,0.4)';
-      ctx.font = '600 9px -apple-system,sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('Insulin', left - 4, y - 8);
-      ctx.restore();
-    }
-  };
-
   const grid = 'rgba(255,255,255,0.05)';
-  const maxBasal = basals.length ? Math.max(...basals.map(b => b.rate || 0), 0.1) : 2;
-  const maxBolus = boluses.length ? Math.max(...boluses.map(b => b.units), 0.5) : 2;
-  const insMax = Math.max(maxBasal, maxBolus) * 1.3;
 
   _tc = new Chart(document.getElementById('traceChart'), {
     data: { datasets },
-    plugins: [exercisePlugin, separatorPlugin],
+    plugins: [exPlugin, insPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: { duration: 300 },
       interaction: { mode: 'index', intersect: false, axis: 'x' },
       plugins: {
         legend: { display: false },
         datalabels: { display: false },
         tooltip: {
           enabled: true,
-          backgroundColor: 'rgba(15,15,20,0.95)',
-          borderColor: 'rgba(255,255,255,0.12)',
-          borderWidth: 1,
-          padding: 10,
+          backgroundColor: 'rgba(12,12,20,0.96)',
+          borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1, padding: 10,
+          titleColor: 'rgba(200,195,215,0.7)', titleFont: { size: 11 },
           callbacks: {
             title: items => {
               const d = new Date(items[0].parsed.x);
-              return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-                     d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              return d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
+                     d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
             },
             label: item => {
-              const ds = item.dataset.label;
-              if (!ds || ds.startsWith('_')) return null;
+              const l = item.dataset.label;
+              if (!l || l === '_band') return null;
               const v = item.parsed.y;
-              if (v == null || v === 0) return null;
-              if (ds === 'Glucose') {
-                const col = v < LOW ? '🔴' : v > HIGH_TIR ? '🟡' : '🟢';
-                return col + ' ' + Math.round(v) + ' mg/dL';
+              if (v == null) return null;
+              if (l === 'Glucose') {
+                const e = v < LOW ? '🔴' : v > HIGH_TIR ? '🟡' : '🟢';
+                return ' ' + e + ' ' + Math.round(v) + ' mg/dL';
               }
-              if (ds === 'Basal') return '▬ Basal ' + v.toFixed(2) + ' u/hr';
-              if (ds === 'Bolus') return '💉 Bolus ' + roundTenth(v) + 'u';
-              if (ds === 'Meal') return '🍽️ ' + (item.raw.carbs || '') + 'g carbs';
+              if (l === 'Meal' && item.raw?.carbs) return ' 🍽️ ' + item.raw.carbs + 'g carbs';
               return null;
             },
+            afterBody: items => {
+              if (!items.length) return [];
+              const ts  = items[0].parsed.x;
+              const out = [];
+              // Basal at this time
+              const sorted = [...basals].sort((a,b) => a.t - b.t);
+              let rate = 0;
+              for (const b of sorted) { if (b.t.getTime() <= ts) rate = b.rate||0; else break; }
+              if (rate > 0) out.push(' ▬ Basal ' + rate.toFixed(2) + ' u/hr');
+              // Bolus within ±2.5 min
+              const nearB = boluses.filter(b => Math.abs(b.t.getTime() - ts) < 2.5*60000);
+              const sum   = nearB.reduce((s,b) => s + b.units, 0);
+              if (sum > 0) out.push(' 💉 Bolus ' + roundTenth(sum) + 'u');
+              return out;
+            },
             labelColor: item => {
-              const ds = item.dataset.label;
-              const c = ds === 'Glucose' ? '#00d4a0' : ds === 'Basal' ? '#a78bfa' : ds === 'Bolus' ? '#00d4a0' : '#f472b6';
-              return { backgroundColor: c, borderColor: c };
-            }
+              const l = item.dataset.label;
+              const c = l === 'Glucose' ? '#00d4a0' : l === 'Meal' ? '#f472b6' : 'transparent';
+              return { backgroundColor: c, borderColor: 'transparent' };
+            },
+            filter: item => item.dataset.label !== '_band'
           }
-        },
-        crosshair: false
+        }
       },
       scales: {
         x: {
-          type: 'linear',
+          type: 'linear', min: xMin, max: xMax,
           ticks: {
-            maxTicksLimit: 8,
-            maxRotation: 0,
-            color: '#505058',
-            font: { size: 9 },
+            maxTicksLimit: 8, maxRotation: 0, color: '#505058', font: { size: 9 },
             callback: v => {
               const d = new Date(v);
               if (d.getMinutes() !== 0) return null;
-              const h = d.getHours(), hh = h % 12 || 12, ampm = h >= 12 ? 'pm' : 'am';
-              const pfx = currentDays > 1 ? d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' : '';
-              return pfx + hh + ampm;
+              const h = d.getHours(), hh = h%12||12, a = h>=12?'pm':'am';
+              const pfx = currentDays > 1
+                ? d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' : '';
+              return pfx + hh + a;
             }
           },
           grid: { color: grid }
         },
-        yGluc: {
-          type: 'linear',
-          position: 'left',
-          min: 40, max: 230,
+        y: {
+          type: 'linear', position: 'left', min: 40, max: 230,
           ticks: { color: '#505058', font: { size: 10 } },
           grid: { color: grid }
-        },
-        yIns: {
-          type: 'linear',
-          position: 'left',
-          min: -insMax,    // negative = insulin lane sits BELOW zero line
-          max: insMax,
-          ticks: { display: false },
-          grid: { display: false }
         }
       }
     }
