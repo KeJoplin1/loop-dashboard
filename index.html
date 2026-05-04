@@ -187,7 +187,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-meals" onchange="renderTraceChart()" checked><span style="width:8px;height:8px;background:#f472b6;border-radius:50%;display:inline-block"></span>Meals</label>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="show-exercise" onchange="renderTraceChart()" checked><span style="width:10px;height:7px;background:rgba(103,232,249,0.35);border:1px solid #67e8f9;border-radius:2px;display:inline-block"></span>Exercise</label>
         <span style="color:rgba(255,255,255,0.12)">|</span>
-        <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:5px;background:rgba(167,139,250,0.6);border-radius:1px;display:inline-block"></span>Basal</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:5px;background:rgba(167,139,250,0.5);border-radius:1px;display:inline-block"></span>Basal delivered</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:0;border-top:2px dashed rgba(167,139,250,0.6);display:inline-block"></span>Commanded</span>
         <span style="display:flex;align-items:center;gap:5px"><span style="width:4px;height:12px;background:#00d4a0;border-radius:2px;display:inline-block"></span>Bolus</span>
       </div>
       <div style="position:relative;width:100%">
@@ -242,7 +243,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div style="position:relative;width:100%;height:180px">
           <canvas id="postmealCurveChart" role="img" aria-label="Post-meal response curve"></canvas>
         </div>
-        <div id="postmeal-stats" style="margin-top:10px"></div>
+        <div id="postmeal-stats" style="margin-top:10px;font-size:13px"></div>
         <div id="insight-postmeal" style="margin-top:8px"></div>
       </div>
     </div>
@@ -256,7 +257,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="card">
       <div class="card-title">Daily TDD — bolus (blue) + basal (purple)</div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
+        <label style="font-size:13px;color:var(--text3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="show-trend" onchange="renderTDDChart(filteredBoluses,filteredBasals)" checked> Trend line</label>
 
       </div>
       <div id="tdd-chart-wrap" style="position:relative;width:100%;height:220px">
@@ -576,11 +577,11 @@ function renderMetrics(cgm,boluses,basals){
         </span>
       </div>
       <div class="metrics-row">
-        <div class="metric-cell"><div class="metric-label">Avg BG</div><div class="metric-val">${avg}<span class="unit"> mg/dL</span></div></div>
+        <div class="metric-cell"><div class="metric-label">Avg BG</div><div class="metric-val" style="font-size:20px">${avg}<span class="unit"> mg/dL</span></div></div>
         <div class="metric-cell"><div class="metric-label">GMI</div><div class="metric-val ${gmiCls}">${gmi}<span class="unit">%</span></div></div>
         <div class="metric-cell"><div class="metric-label">TIR</div><div class="metric-val ${tirCls}">${tir}<span class="unit">%</span></div></div>
         <div class="metric-cell"><div class="metric-label">CV</div><div class="metric-val ${cvCls}">${cv}<span class="unit">%</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">SD</div><div class="metric-val">${sd}<span class="unit"> mg/dL</span></div></div>
+        <div class="metric-cell" style="border-right:none"><div class="metric-label">SD</div><div class="metric-val" style="font-size:20px">${sd}<span class="unit"> mg/dL</span></div></div>
       </div>
     </div>
     <div class="metrics-section" style="flex:2">
@@ -595,9 +596,9 @@ function renderMetrics(cgm,boluses,basals){
         </span>
       </div>
       <div class="metrics-row">
-        <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
-        <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:22px;font-weight:700"><span style="color:var(--blue)">${pBolus}%</span><span style="color:var(--text3);font-size:14px"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
+        <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val" style="font-size:20px">${tdd}<span class="unit"> u</span></div></div>
+        <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val" style="font-size:20px">${tddKg}<span class="unit"> u/kg</span></div></div>
+        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:20px" style="font-size:22px;font-weight:700"><span style="color:var(--blue)">${pBolus}%</span><span style="color:var(--text3);font-size:14px"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
       </div>
     </div>
   `;
@@ -644,7 +645,7 @@ function renderTraceChart() {
   const xMin = cgm[0].t.getTime();
   const xMax = cgm[cgm.length-1].t.getTime();
   const bs    = [...basals].sort((a,b) => a.t - b.t);
-  const maxRate  = Math.max(...bs.map((b,i)=>{const e=i<bs.length-1?bs[i+1].t.getTime():b.t.getTime()+30*60000;const h=(e-b.t.getTime())/3600000;return h>0?(b.delivered||0)/h:0;}), 0.1);
+  const maxRate  = Math.max(...bs.map((b,i)=>{const e=i<bs.length-1?bs[i+1].t.getTime():b.t.getTime()+30*60000;const h=(e-b.t.getTime())/3600000;const del=h>0?(b.delivered||0)/h:0;return Math.max(del,b.rate||0);}), 0.1);
   const maxBolus = Math.max(...boluses.map(b => b.units), 0.5);
 
   // ── Datasets (glucose + meals only — insulin drawn by plugin) ─────────────
@@ -669,18 +670,7 @@ function renderTraceChart() {
     );
   }
 
-  if (showMeals && meals.length) {
-    datasets.push({
-      label: 'Meal',
-      data: meals.map(m => {
-        const n = cgm.reduce((a,d) => Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
-        return { x: m.t.getTime(), y: n.v, carbs: m.carbs };
-      }),
-      type: 'scatter', pointStyle: 'triangle', pointRadius: 10, hoverRadius: 18,
-      pointBackgroundColor: '#f472b6',
-      pointBorderColor: 'rgba(244,114,182,0.3)', pointBorderWidth: 8, datalabels: { display: false }
-    });
-  }
+  // Meals drawn by plugin only — no dataset (avoids triangle artifacts)
 
   // ── Insulin plugin — draws in the bottom 22% of chartArea ─────────────────
   const insPlugin = {
@@ -716,32 +706,32 @@ function renderTraceChart() {
         return hrs > 0 ? (b.delivered||0) / hrs : 0;
       };
 
-      ctx.fillStyle = 'rgba(167,139,250,0.22)';
-      ctx.beginPath();
-      let started = false;
+      // Basal delivered — filled bars per segment
       bs.forEach((b, i) => {
         const x1 = Math.max(xOf(b.t.getTime()), left);
-        const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
+        const x2 = i < bs.length-1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
         if (x2 <= x1 + 0.5) return;
-        const yr = yRate(deliveredRate(b, i));
-        if (!started) { ctx.moveTo(x1, bottom); ctx.lineTo(x1, yr); started = true; }
-        else ctx.lineTo(x1, yr);
-        ctx.lineTo(x2, yr);
+        const barTop = yRate(deliveredRate(b, i));
+        ctx.fillStyle = 'rgba(167,139,250,0.25)';
+        ctx.fillRect(x1, barTop, x2-x1, bottom-barTop);
+        // Solid top edge
+        ctx.fillStyle = 'rgba(167,139,250,0.75)';
+        ctx.fillRect(x1, barTop, x2-x1, 1.5);
       });
-      if (started) { ctx.lineTo(right, bottom); ctx.closePath(); ctx.fill(); }
 
-      // ── Basal line ──────────────────────────────────────────────────────
-      ctx.strokeStyle = 'rgba(167,139,250,0.8)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); started = false;
+      // Commanded rate — dotted overlay so you can see scheduled vs delivered
+      ctx.strokeStyle = 'rgba(167,139,250,0.5)';
+      ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); let started = false;
       bs.forEach((b, i) => {
         const x1 = Math.max(xOf(b.t.getTime()), left);
-        const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
+        const x2 = i < bs.length-1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
         if (x2 <= x1 + 0.5) return;
-        const yr = yRate(deliveredRate(b, i));
+        const yr = yRate(b.rate || 0);
         if (!started) { ctx.moveTo(x1, yr); started = true; } else ctx.lineTo(x1, yr);
         ctx.lineTo(x2, yr);
       });
-      ctx.stroke();
+      ctx.stroke(); ctx.setLineDash([]);
 
       // ── Bolus bars ──────────────────────────────────────────────────────
       boluses.forEach(b => {
