@@ -644,7 +644,7 @@ function renderTraceChart() {
   const xMin = cgm[0].t.getTime();
   const xMax = cgm[cgm.length-1].t.getTime();
   const bs    = [...basals].sort((a,b) => a.t - b.t);
-  const maxRate  = Math.max(...bs.map(b => b.rate || 0), 0.1);
+  const maxRate  = Math.max(...bs.map((b,i)=>{const e=i<bs.length-1?bs[i+1].t.getTime():b.t.getTime()+30*60000;const h=(e-b.t.getTime())/3600000;return h>0?(b.delivered||0)/h:0;}), 0.1);
   const maxBolus = Math.max(...boluses.map(b => b.units), 0.5);
 
   // ── Datasets (glucose + meals only — insulin drawn by plugin) ─────────────
@@ -709,7 +709,13 @@ function renderTraceChart() {
       // ── Clip to insulin zone ────────────────────────────────────────────
       ctx.beginPath(); ctx.rect(left, SEP_Y, right - left, INS_H + 1); ctx.clip();
 
-      // ── Basal fill ──────────────────────────────────────────────────────
+      // ── Delivered u/hr = delivered ÷ segment duration ──────────────────────
+      const deliveredRate = (b, i) => {
+        const segEnd = i < bs.length-1 ? bs[i+1].t.getTime() : b.t.getTime()+30*60000;
+        const hrs = (segEnd - b.t.getTime()) / 3600000;
+        return hrs > 0 ? (b.delivered||0) / hrs : 0;
+      };
+
       ctx.fillStyle = 'rgba(167,139,250,0.22)';
       ctx.beginPath();
       let started = false;
@@ -717,7 +723,7 @@ function renderTraceChart() {
         const x1 = Math.max(xOf(b.t.getTime()), left);
         const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
         if (x2 <= x1 + 0.5) return;
-        const yr = yRate(b.rate || 0);
+        const yr = yRate(deliveredRate(b, i));
         if (!started) { ctx.moveTo(x1, bottom); ctx.lineTo(x1, yr); started = true; }
         else ctx.lineTo(x1, yr);
         ctx.lineTo(x2, yr);
@@ -731,7 +737,7 @@ function renderTraceChart() {
         const x1 = Math.max(xOf(b.t.getTime()), left);
         const x2 = i < bs.length - 1 ? Math.min(xOf(bs[i+1].t.getTime()), right) : right;
         if (x2 <= x1 + 0.5) return;
-        const yr = yRate(b.rate || 0);
+        const yr = yRate(deliveredRate(b, i));
         if (!started) { ctx.moveTo(x1, yr); started = true; } else ctx.lineTo(x1, yr);
         ctx.lineTo(x2, yr);
       });
@@ -749,40 +755,36 @@ function renderTraceChart() {
         ctx.fill();
       });
 
-      // ── Meal markers ────────────────────────────────────────────────────────
+      // ── Meal markers — vertical line + carb label, NO triangle ─────────────
       if (showMeals && meals.length) {
         meals.forEach(m => {
           const mx = xOf(m.t.getTime());
           if (mx < left || mx > right) return;
           const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
           const my = chart.scales.y.getPixelForValue(near.v);
-          const carbTxt = m.carbs > 0 ? m.carbs+'g' : '';
-          const pillTxt = carbTxt ? '🍴 '+carbTxt : '🍴';
-          const PW = Math.max(36, pillTxt.length*7+10), PH=18;
+          const carbTxt = m.carbs > 0 ? m.carbs+'g' : 'meal';
 
           ctx.save();
 
-          // Dashed vertical line
-          ctx.strokeStyle='rgba(244,114,182,0.45)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
-          ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,bottom);ctx.stroke();
+          // Solid vertical line from top of glucose zone to bottom
+          ctx.strokeStyle='rgba(244,114,182,0.55)';ctx.lineWidth=1.5;
           ctx.setLineDash([]);
+          ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,SEP_Y);ctx.stroke();
 
-          // Pill — always position so it stays within chart bounds
-          const px=Math.min(Math.max(mx-PW/2, left+2), right-PW-2);
-          const py=top+4;
-          ctx.fillStyle='rgba(20,5,25,0.92)';
-          ctx.strokeStyle='#f472b6';ctx.lineWidth=1.5;
-          if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,5);ctx.fill();ctx.stroke();}
+          // Carb label badge — clamped so it never overflows chart
+          const PW=Math.max(28,carbTxt.length*6.5+10), PH=16;
+          const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2), py=top+3;
+          ctx.fillStyle='rgba(15,5,20,0.9)';
+          ctx.strokeStyle='rgba(244,114,182,0.8)';ctx.lineWidth=1.2;
+          if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,4);ctx.fill();ctx.stroke();}
           else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
+          ctx.fillStyle='#f472b6';ctx.font='600 9px -apple-system,sans-serif';
+          ctx.textAlign='center';ctx.fillText(carbTxt,px+PW/2,py+PH-4);
 
-          ctx.fillStyle='#f472b6';
-          ctx.font='bold 9px -apple-system,sans-serif';
-          ctx.textAlign='center';
-          ctx.fillText(pillTxt, px+PW/2, py+PH-4);
+          // Pink filled circle on glucose trace (no triangle)
+          ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);ctx.fill();ctx.stroke();
 
-          // Pink dot on trace
-          ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
-          ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);ctx.fill();ctx.stroke();
           ctx.restore();
         });
       }
@@ -905,10 +907,12 @@ function renderTraceChart() {
             let activeSeg2=null;
             for(let i=0;i<sorted2.length;i++){const s=sorted2[i].t.getTime(),e=i<sorted2.length-1?sorted2[i+1].t.getTime():s+30*60000;if(ts>=s&&ts<e){activeSeg2=sorted2[i];break;}}
             if (activeSeg2) {
-              const dur=(()=>{const i=sorted2.indexOf(activeSeg2);const e=i<sorted2.length-1?sorted2[i+1].t.getTime():activeSeg2.t.getTime()+30*60000;return(e-activeSeg2.t.getTime())/3600000;})();
-              const susp=activeSeg2.rate<0.01||(dur>0.01&&(activeSeg2.delivered||0)/(activeSeg2.rate*dur)<0.05);
-              if(susp) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="color:#a78bfa;font-size:10px">⏸</span><span style="color:#a78bfa">Suspended</span></div>`;
-              else html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#a78bfa;display:inline-block;flex-shrink:0"></span><span style="color:#a78bfa">Basal ${(activeSeg2.rate||0).toFixed(2)} u/hr</span></div>`;
+              const idx2=sorted2.indexOf(activeSeg2);
+              const segEnd2=idx2<sorted2.length-1?sorted2[idx2+1].t.getTime():activeSeg2.t.getTime()+30*60000;
+              const hrs2=(segEnd2-activeSeg2.t.getTime())/3600000;
+              const delRate=hrs2>0?(activeSeg2.delivered||0)/hrs2:0;
+              if(delRate<0.005) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="color:#a78bfa;font-size:11px">⏸</span><span style="color:#a78bfa">Basal suspended</span></div>`;
+              else html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#a78bfa;display:inline-block;flex-shrink:0"></span><span style="color:#a78bfa">Basal ${delRate.toFixed(2)} u/hr</span></div>`;
             }
 
             // Bolus
@@ -917,7 +921,7 @@ function renderTraceChart() {
             if(bsum>0) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#60a5fa;display:inline-block;flex-shrink:0"></span><span style="color:#60a5fa">Bolus ${roundTenth(bsum)}u</span></div>`;
 
             // Meal
-            if(showMeals){const nearM2=meals.filter(m=>Math.abs(m.t.getTime()-ts)<5*60000);nearM2.forEach(m=>{if(m.carbs>0)html+=`<div style="display:flex;align-items:center;gap:7px"><span style="font-size:10px">🍴</span><span style="color:#f472b6">${m.carbs}g carbs</span></div>`;});}
+            if(showMeals){const nearM2=meals.filter(m=>Math.abs(m.t.getTime()-ts)<5*60000);nearM2.forEach(m=>{if(m.carbs>0)html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f472b6;display:inline-block;flex-shrink:0"></span><span style="color:#f472b6">${m.carbs}g carbs</span></div>`;});}
 
             el.innerHTML = html;
             el.style.display = 'block';
