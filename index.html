@@ -396,9 +396,15 @@ function parseAndRender(csvText){
   }).map(r=>({t:new Date(r.timestamp),carbs:parseFloat(r.carbs_g)||0}))
     .filter(r=>r.carbs>0).sort((a,b)=>a.t-b.t);
   // Also pull carb data from bolus rows that include a carbs_g field
+  // Pull carbs from bolus rows (both carbs_g column and bolus rows with carb data)
   const carbsFromBolus=rows.filter(r=>r.type==='bolus'&&r.carbs_g&&r.carbs_g!==''&&parseFloat(r.carbs_g)>0)
     .map(r=>({t:new Date(r.timestamp),carbs:parseFloat(r.carbs_g)||0}))
     .sort((a,b)=>a.t-b.t);
+  // Also add carbs to bolus objects themselves for the plugin to use
+  allBoluses.forEach(b=>{
+    const matchRow=rows.find(r=>r.type==='bolus'&&Math.abs(new Date(r.timestamp)-b.t)<2000&&r.carbs_g&&parseFloat(r.carbs_g)>0);
+    if(matchRow) b.carbs=parseFloat(matchRow.carbs_g);
+  });
   // Merge, dedup by timestamp (within 1 min)
   carbsFromBolus.forEach(cb=>{
     const dup=allMeals.find(m=>Math.abs(m.t-cb.t)<60000);
@@ -772,8 +778,16 @@ function renderTraceChart() {
       });
 
       // ── Meal markers — vertical line + carb label, NO triangle ─────────────
-      if (showMeals && meals.length) {
-        meals.forEach(m => {
+      // Draw meal markers from filteredMeals AND from boluses with carbs
+      const mealMarkers = [...meals];
+      // Add bolus-carb entries that aren't already in meals
+      boluses.forEach(b => {
+        if ((b.carbs||0) > 0 && !mealMarkers.find(m => Math.abs(m.t-b.t) < 60000)) {
+          mealMarkers.push({t: b.t, carbs: b.carbs});
+        }
+      });
+      if (showMeals && mealMarkers.length) {
+        mealMarkers.forEach(m => {
           const mx = xOf(m.t.getTime());
           if (mx < left || mx > right) return;
           const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
@@ -944,7 +958,12 @@ function renderTraceChart() {
             if(bsum>0) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#60a5fa;display:inline-block;flex-shrink:0"></span><span style="color:#60a5fa">Bolus ${roundTenth(bsum)}u</span></div>`;
 
             // Meal
-            if(showMeals){const nearM2=meals.filter(m=>Math.abs(m.t.getTime()-ts)<5*60000);nearM2.forEach(m=>{if(m.carbs>0)html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f472b6;display:inline-block;flex-shrink:0"></span><span style="color:#f472b6">${m.carbs}g carbs</span></div>`;});}
+            if(showMeals){
+              // Meals from filteredMeals + bolus rows with carbs
+              const allMealMarkers=[...meals,...boluses.filter(b=>(b.carbs||0)>0&&!meals.find(m=>Math.abs(m.t-b.t)<60000))];
+              const nearM2=allMealMarkers.filter(m=>Math.abs(m.t.getTime()-ts)<5*60000);
+              nearM2.forEach(m=>{if(m.carbs>0)html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f472b6;display:inline-block;flex-shrink:0"></span><span style="color:#f472b6">${m.carbs}g carbs</span></div>`;});
+            }
 
             el.innerHTML = html;
             el.style.display = 'block';
