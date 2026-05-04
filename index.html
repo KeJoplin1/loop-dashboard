@@ -191,7 +191,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <span style="display:flex;align-items:center;gap:5px"><span style="width:4px;height:12px;background:#00d4a0;border-radius:2px;display:inline-block"></span>Bolus</span>
       </div>
       <div style="position:relative;width:100%">
-        <canvas id="traceChart" style="display:block;width:100%;height:360px"></canvas>
+        <canvas id="traceChart" style="display:block;width:100%;height:380px"></canvas>
       </div>
     </div>
     <div id="event-tooltip"></div>
@@ -597,7 +597,7 @@ function renderMetrics(cgm,boluses,basals){
       <div class="metrics-row">
         <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val">${tdd}<span class="unit"> u</span></div></div>
         <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val">${tddKg}<span class="unit"> u/kg</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:16px"><span style="color:var(--blue)">${pBolus}%</span><span class="unit"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
+        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:22px;font-weight:700"><span style="color:var(--blue)">${pBolus}%</span><span style="color:var(--text3);font-size:14px"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
       </div>
     </div>
   `;
@@ -688,7 +688,7 @@ function renderTraceChart() {
     afterDraw(chart) {
       const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
       const H      = bottom - top;
-      const SEP_Y  = top + H * 0.78;
+      const SEP_Y  = top + H * 0.76;
       const INS_H  = bottom - SEP_Y;
       const xOf    = t => x.getPixelForValue(t);
       const yRate  = r => bottom - (r / maxRate)  * INS_H * 0.82;
@@ -874,72 +874,70 @@ function renderTraceChart() {
         legend: { display: false },
         datalabels: { display: false },
         tooltip: {
-          enabled: true,
+          enabled: false,
           position: 'nearest',
+          external: ctx => {
+            const {chart, tooltip} = ctx;
+            let el = document.getElementById('tc-tooltip');
+            if (!el) {
+              el = document.createElement('div');
+              el.id = 'tc-tooltip';
+              el.style.cssText = 'position:fixed;background:rgba(12,12,20,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:9999;display:none;min-width:150px;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
+              document.body.appendChild(el);
+            }
+            if (tooltip.opacity === 0) { el.style.display='none'; return; }
+
+            // Title
+            const d = new Date(tooltip.dataPoints?.[0]?.parsed?.x);
+            const title = d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+            const ts = tooltip.dataPoints?.[0]?.parsed?.x;
+
+            // Glucose
+            const gItem = tooltip.dataPoints?.find(p => p.dataset.label === 'Glucose');
+            const gv = gItem?.parsed?.y;
+            const gc = gv ? (gv < LOW ? '#ff4d6d' : gv > (tirMode==='tight'?140:HIGH) ? '#ffb347' : '#00d4a0') : '#00d4a0';
+
+            let html = `<div style="color:rgba(200,195,215,0.7);font-size:11px;margin-bottom:6px">${title}</div>`;
+            if (gv) html += `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:${gc};display:inline-block;flex-shrink:0"></span><span style="color:${gc};font-weight:700">${Math.round(gv)}</span><span style="color:rgba(180,175,200,0.6);font-size:10px">mg/dL</span></div>`;
+
+            // Basal
+            const sorted2 = [...basals].sort((a,b)=>a.t-b.t);
+            let activeSeg2=null;
+            for(let i=0;i<sorted2.length;i++){const s=sorted2[i].t.getTime(),e=i<sorted2.length-1?sorted2[i+1].t.getTime():s+30*60000;if(ts>=s&&ts<e){activeSeg2=sorted2[i];break;}}
+            if (activeSeg2) {
+              const dur=(()=>{const i=sorted2.indexOf(activeSeg2);const e=i<sorted2.length-1?sorted2[i+1].t.getTime():activeSeg2.t.getTime()+30*60000;return(e-activeSeg2.t.getTime())/3600000;})();
+              const susp=activeSeg2.rate<0.01||(dur>0.01&&(activeSeg2.delivered||0)/(activeSeg2.rate*dur)<0.05);
+              if(susp) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="color:#a78bfa;font-size:10px">⏸</span><span style="color:#a78bfa">Suspended</span></div>`;
+              else html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#a78bfa;display:inline-block;flex-shrink:0"></span><span style="color:#a78bfa">Basal ${(activeSeg2.rate||0).toFixed(2)} u/hr</span></div>`;
+            }
+
+            // Bolus
+            const nearB2=boluses.filter(b=>Math.abs(b.t.getTime()-ts)<5*60000);
+            const bsum=nearB2.reduce((s,b)=>s+b.units,0);
+            if(bsum>0) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#60a5fa;display:inline-block;flex-shrink:0"></span><span style="color:#60a5fa">Bolus ${roundTenth(bsum)}u</span></div>`;
+
+            // Meal
+            if(showMeals){const nearM2=meals.filter(m=>Math.abs(m.t.getTime()-ts)<5*60000);nearM2.forEach(m=>{if(m.carbs>0)html+=`<div style="display:flex;align-items:center;gap:7px"><span style="font-size:10px">🍴</span><span style="color:#f472b6">${m.carbs}g carbs</span></div>`;});}
+
+            el.innerHTML = html;
+            el.style.display = 'block';
+
+            // Position — clamp to viewport
+            const canvasRect = chart.canvas.getBoundingClientRect();
+            const cp = tooltip.caretX, cy = tooltip.caretY;
+            const tw = el.offsetWidth + 16, th = el.offsetHeight + 16;
+            let lx = canvasRect.left + cp + 14;
+            let ly = canvasRect.top  + cy - th/2;
+            if (lx + tw > window.innerWidth) lx = canvasRect.left + cp - tw + 2;
+            if (ly < 4) ly = 4;
+            if (ly + th > window.innerHeight) ly = window.innerHeight - th - 4;
+            el.style.left = lx + 'px';
+            el.style.top  = ly + 'px';
+          },
           backgroundColor: 'rgba(12,12,20,0.96)',
           borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1, padding: 10,
           titleColor: 'rgba(200,195,215,0.7)', titleFont: { size: 11 },
-          bodyColor: 'rgba(220,218,230,0.9)',
-          afterBodyColor: '#60a5fa',
-          callbacks: {
-            title: items => {
-              const d = new Date(items[0].parsed.x);
-              return d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
-                     d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-            },
-            label: item => {
-              const l = item.dataset.label;
-              if (!l || l === '_band') return null;
-              const v = item.parsed.y;
-              if (v == null) return null;
-              if (l === 'Glucose') {
-                const e = v < LOW ? '🔴' : v > HIGH_TIR ? '🟡' : '🟢';
-                return ' ' + e + ' ' + Math.round(v) + ' mg/dL';
-              }
-
-              return null;
-            },
-            afterBody: items => {
-              if (!items.length) return [];
-              const ts  = items[0].parsed.x;
-              const out = [];
-              // Basal: find the active segment at this timestamp
-              // A segment is only active if the cursor is within it
-              // (between its start and the NEXT segment's start)
-              const sorted = [...basals].sort((a,b) => a.t - b.t);
-              let activeRate = null;
-              for (let i = 0; i < sorted.length; i++) {
-                const segStart = sorted[i].t.getTime();
-                const segEnd   = i < sorted.length-1 ? sorted[i+1].t.getTime() : segStart + 30*60000;
-                if (ts >= segStart && ts < segEnd) {
-                  activeRate = sorted[i].rate || 0;
-                  break;
-                }
-              }
-              // Only show basal if cursor is within an actual segment (not a gap)
-              if (activeRate !== null && activeRate > 0) {
-                out.push(' ▬ Basal ' + activeRate.toFixed(2) + ' u/hr');
-              } else if (activeRate === 0) {
-                out.push(' ⏸ Basal suspended');
-              }
-              // Bolus within ±5 min of glucose point
-              const nearB = boluses.filter(b => Math.abs(b.t.getTime() - ts) < 5*60000);
-              const sum   = nearB.reduce((s,b) => s + b.units, 0);
-              if (sum > 0) out.push(' 💉 Bolus ' + roundTenth(sum) + 'u');
-              // Meal within ±5 min
-              if (showMeals) {
-                const nearM = meals.filter(m => Math.abs(m.t.getTime() - ts) < 5*60000);
-                nearM.forEach(m => { if(m.carbs>0) out.push(' 🍽️ ' + m.carbs + 'g carbs'); });
-              }
-              return out;
-            },
-            labelColor: item => {
-              const l = item.dataset.label;
-              const c = l === 'Glucose' ? '#00d4a0' : 'transparent';
-              return { backgroundColor: c, borderColor: 'transparent' };
-            },
-            filter: item => item.dataset.label !== '_band'
-          }
+          callbacks: { }
         }
       },
       scales: {
@@ -965,6 +963,11 @@ function renderTraceChart() {
         }
       }
     }
+  });
+  // Hide external tooltip on mouse leave
+  document.getElementById('traceChart')?.addEventListener('mouseleave', () => {
+    const el = document.getElementById('tc-tooltip');
+    if (el) el.style.display = 'none';
   });
 }
 
