@@ -742,40 +742,43 @@ function renderTraceChart() {
         const bx = xOf(b.t.getTime());
         if (bx < left || bx > right) return;
         const barH = bottom - yBolus(b.units);
-        ctx.fillStyle = 'rgba(59,130,246,0.9)';
+        ctx.fillStyle = 'rgba(96,165,250,0.95)';
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(bx - 3, bottom - barH, 6, barH, 2);
         else ctx.rect(bx - 3, bottom - barH, 6, barH);
         ctx.fill();
       });
 
-      // ── Meal markers (drawn in glucose zone) ─────────────────────────────
+      // ── Meal markers ────────────────────────────────────────────────────────
       if (showMeals && meals.length) {
         meals.forEach(m => {
           const mx = xOf(m.t.getTime());
           if (mx < left || mx > right) return;
           const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
           const my = chart.scales.y.getPixelForValue(near.v);
-          const label = m.carbs > 0 ? m.carbs + 'g' : 'meal';
-          const PW = Math.max(30, label.length*7+14), PH=18;
+          const carbTxt = m.carbs > 0 ? m.carbs+'g' : '';
+          const pillTxt = carbTxt ? '🍴 '+carbTxt : '🍴';
+          const PW = Math.max(36, pillTxt.length*7+10), PH=18;
 
-          // Vertical dashed line
           ctx.save();
-          ctx.strokeStyle='rgba(244,114,182,0.5)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+
+          // Dashed vertical line
+          ctx.strokeStyle='rgba(244,114,182,0.45)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
           ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,bottom);ctx.stroke();
           ctx.setLineDash([]);
 
-          // Pill badge at top
+          // Pill — always position so it stays within chart bounds
+          const px=Math.min(Math.max(mx-PW/2, left+2), right-PW-2);
+          const py=top+4;
           ctx.fillStyle='rgba(20,5,25,0.92)';
           ctx.strokeStyle='#f472b6';ctx.lineWidth=1.5;
-          const px=mx-PW/2, py=top+4;
-          if(ctx.roundRect)ctx.beginPath(),ctx.roundRect(px,py,PW,PH,5),ctx.fill(),ctx.stroke();
+          if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,5);ctx.fill();ctx.stroke();}
           else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
 
-          // Label text
-          ctx.fillStyle='#f472b6';ctx.font='bold 9px -apple-system,sans-serif';
+          ctx.fillStyle='#f472b6';
+          ctx.font='bold 9px -apple-system,sans-serif';
           ctx.textAlign='center';
-          ctx.fillText(label, mx, py+PH-4);
+          ctx.fillText(pillTxt, px+PW/2, py+PH-4);
 
           // Pink dot on trace
           ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
@@ -872,9 +875,12 @@ function renderTraceChart() {
         datalabels: { display: false },
         tooltip: {
           enabled: true,
+          position: 'nearest',
           backgroundColor: 'rgba(12,12,20,0.96)',
           borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1, padding: 10,
           titleColor: 'rgba(200,195,215,0.7)', titleFont: { size: 11 },
+          bodyColor: 'rgba(220,218,230,0.9)',
+          afterBodyColor: '#60a5fa',
           callbacks: {
             title: items => {
               const d = new Date(items[0].parsed.x);
@@ -919,7 +925,7 @@ function renderTraceChart() {
               // Bolus within ±5 min of glucose point
               const nearB = boluses.filter(b => Math.abs(b.t.getTime() - ts) < 5*60000);
               const sum   = nearB.reduce((s,b) => s + b.units, 0);
-              if (sum > 0) out.push(' 💉 Bolus ' + roundTenth(sum) + 'u  ●');
+              if (sum > 0) out.push(' 💉 Bolus ' + roundTenth(sum) + 'u');
               // Meal within ±5 min
               if (showMeals) {
                 const nearM = meals.filter(m => Math.abs(m.t.getTime() - ts) < 5*60000);
@@ -992,7 +998,8 @@ function renderHourlyAvg(cgm){
   cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
   const avgs=blocks.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(59,130,246,0.9)':d<=20?'rgba(0,190,140,0.75)':d<=35?'rgba(255,179,71,0.8)':'rgba(226,75,74,0.85)';});
+  const HIGH_TIR_H=tirMode==='tight'?140:HIGH;
+  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.2)';return v<LOW?'rgba(255,77,109,0.85)':v<=HIGH_TIR_H?'rgba(0,212,160,0.8)':v<=250?'rgba(255,179,71,0.85)':'rgba(226,75,74,0.85)';});
   const grid='rgba(255,255,255,0.05)';
   const lc='rgba(240,240,240,0.85)';
   hourlyAvgChart=new Chart(document.getElementById('hourlyAvgChart'),{
