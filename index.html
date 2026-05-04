@@ -194,6 +194,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div style="position:relative;width:100%">
         <canvas id="traceChart" style="display:block;width:100%;height:380px"></canvas>
       </div>
+      <div id="basal-summary" style="display:flex;gap:24px;margin-top:8px;padding:8px 0;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:var(--text3)"></div>
     </div>
     <div id="event-tooltip"></div>
 
@@ -366,7 +367,7 @@ function parseAndRender(csvText){
   allMeals=rows.filter(r=>{
     const t=(r.type||'').toLowerCase().trim();
     // Accept meal, carb, food, or any bolus row that also has carbs
-    return (t==='meal'||t==='carb'||t==='carbs'||t==='food') && r.carbs_g!=='' && r.carbs_g!==undefined;
+    return (t==='meal'||t==='carb'||t==='carbs'||t==='food');  // carbs optional
   }).map(r=>({t:new Date(r.timestamp),carbs:parseFloat(r.carbs_g)||0}))
     .filter(r=>r.carbs>0).sort((a,b)=>a.t-b.t);
   // Also pull carb data from bolus rows that include a carbs_g field
@@ -901,8 +902,15 @@ function renderTraceChart() {
               const segEnd2=idx2<sorted2.length-1?sorted2[idx2+1].t.getTime():activeSeg2.t.getTime()+30*60000;
               const hrs2=(segEnd2-activeSeg2.t.getTime())/3600000;
               const delRate=hrs2>0?(activeSeg2.delivered||0)/hrs2:0;
-              if(delRate<0.005) html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="color:#a78bfa;font-size:11px">⏸</span><span style="color:#a78bfa">Basal suspended</span></div>`;
-              else html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><span style="width:9px;height:9px;border-radius:50%;background:#a78bfa;display:inline-block;flex-shrink:0"></span><span style="color:#a78bfa">Basal ${delRate.toFixed(2)} u/hr</span></div>`;
+              const cmdRate=activeSeg2.rate||0;
+              if(delRate<0.005) {
+                html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:2px"><span style="color:#a78bfa;font-size:11px">⏸</span><span style="color:#a78bfa">Basal suspended</span></div>`;
+                html+=`<div style="padding-left:16px;font-size:10px;color:rgba(167,139,250,0.5);margin-bottom:4px">Scheduled: ${cmdRate.toFixed(2)} u/hr</div>`;
+              } else {
+                const pct=cmdRate>0?Math.round(delRate/cmdRate*100):100;
+                html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:2px"><span style="width:9px;height:9px;border-radius:50%;background:#a78bfa;display:inline-block;flex-shrink:0"></span><span style="color:#a78bfa">Basal ${delRate.toFixed(2)} u/hr</span></div>`;
+                html+=`<div style="padding-left:16px;font-size:10px;color:rgba(167,139,250,0.5);margin-bottom:4px">Scheduled: ${cmdRate.toFixed(2)} u/hr${pct<98?' · '+pct+'% delivered':''}</div>`;
+              }
             }
 
             // Bolus
@@ -958,6 +966,35 @@ function renderTraceChart() {
       }
     }
   });
+  // ── Basal summary: avg delivered vs avg scheduled ───────────────────────
+  const bsSum = [...basals].sort((a,b)=>a.t-b.t);
+  if (bsSum.length) {
+    let totalDel=0, totalCmd=0, totalHrs=0;
+    bsSum.forEach((b,i)=>{
+      const segEnd=i<bsSum.length-1?bsSum[i+1].t.getTime():b.t.getTime()+30*60000;
+      const hrs=(segEnd-b.t.getTime())/3600000;
+      totalDel+=(b.delivered||0);
+      totalCmd+=(b.rate||0)*hrs;
+      totalHrs+=hrs;
+    });
+    const avgDel=totalHrs>0?totalDel/totalHrs:0;
+    const avgCmd=totalHrs>0?totalCmd/totalHrs:0;
+    const pctDel=avgCmd>0?Math.round(avgDel/avgCmd*100):100;
+    const suspendedHrs=bsSum.reduce((s,b,i)=>{
+      const segEnd=i<bsSum.length-1?bsSum[i+1].t.getTime():b.t.getTime()+30*60000;
+      const hrs=(segEnd-b.t.getTime())/3600000;
+      const delR=hrs>0?(b.delivered||0)/hrs:0;
+      return s+(delR<0.005?hrs:0);
+    },0);
+    const el=document.getElementById('basal-summary');
+    if(el) el.innerHTML=`
+      <span>Avg delivered: <strong style="color:#a78bfa">${avgDel.toFixed(2)} u/hr</strong></span>
+      <span>Avg scheduled: <strong style="color:rgba(167,139,250,0.55)">${avgCmd.toFixed(2)} u/hr</strong></span>
+      <span>${pctDel<100?`Delivered <strong style="color:#a78bfa">${pctDel}%</strong> of scheduled`:'<strong style="color:#00d4a0">Full delivery</strong>'}</span>
+      ${suspendedHrs>0.1?`<span>Suspended: <strong style="color:#ffb347">${suspendedHrs.toFixed(1)}h</strong></span>`:''}
+    `;
+  }
+
   // Hide external tooltip on mouse leave
   document.getElementById('traceChart')?.addEventListener('mouseleave', () => {
     const el = document.getElementById('tc-tooltip');
