@@ -742,12 +742,47 @@ function renderTraceChart() {
         const bx = xOf(b.t.getTime());
         if (bx < left || bx > right) return;
         const barH = bottom - yBolus(b.units);
-        ctx.fillStyle = 'rgba(0,212,160,0.85)';
+        ctx.fillStyle = 'rgba(59,130,246,0.9)';
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(bx - 3, bottom - barH, 6, barH, 2);
         else ctx.rect(bx - 3, bottom - barH, 6, barH);
         ctx.fill();
       });
+
+      // ── Meal markers (drawn in glucose zone) ─────────────────────────────
+      if (showMeals && meals.length) {
+        meals.forEach(m => {
+          const mx = xOf(m.t.getTime());
+          if (mx < left || mx > right) return;
+          const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
+          const my = chart.scales.y.getPixelForValue(near.v);
+          const label = m.carbs > 0 ? m.carbs + 'g' : 'meal';
+          const PW = Math.max(30, label.length*7+14), PH=18;
+
+          // Vertical dashed line
+          ctx.save();
+          ctx.strokeStyle='rgba(244,114,182,0.5)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+          ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,bottom);ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Pill badge at top
+          ctx.fillStyle='rgba(20,5,25,0.92)';
+          ctx.strokeStyle='#f472b6';ctx.lineWidth=1.5;
+          const px=mx-PW/2, py=top+4;
+          if(ctx.roundRect)ctx.beginPath(),ctx.roundRect(px,py,PW,PH,5),ctx.fill(),ctx.stroke();
+          else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
+
+          // Label text
+          ctx.fillStyle='#f472b6';ctx.font='bold 9px -apple-system,sans-serif';
+          ctx.textAlign='center';
+          ctx.fillText(label, mx, py+PH-4);
+
+          // Pink dot on trace
+          ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);ctx.fill();ctx.stroke();
+          ctx.restore();
+        });
+      }
 
       ctx.restore();
 
@@ -831,6 +866,7 @@ function renderTraceChart() {
       maintainAspectRatio: false,
       animation: { duration: 300 },
       interaction: { mode: 'index', intersect: false, axis: 'x' },
+      layout: { padding: { right: 20 } },
       plugins: {
         legend: { display: false },
         datalabels: { display: false },
@@ -854,7 +890,7 @@ function renderTraceChart() {
                 const e = v < LOW ? '🔴' : v > HIGH_TIR ? '🟡' : '🟢';
                 return ' ' + e + ' ' + Math.round(v) + ' mg/dL';
               }
-              if (l === 'Meal' && item.raw?.carbs) return ' 🍽️ ' + item.raw.carbs + 'g carbs';
+
               return null;
             },
             afterBody: items => {
@@ -880,15 +916,20 @@ function renderTraceChart() {
               } else if (activeRate === 0) {
                 out.push(' ⏸ Basal suspended');
               }
-              // Bolus within ±2.5 min
-              const nearB = boluses.filter(b => Math.abs(b.t.getTime() - ts) < 2.5*60000);
+              // Bolus within ±5 min of glucose point
+              const nearB = boluses.filter(b => Math.abs(b.t.getTime() - ts) < 5*60000);
               const sum   = nearB.reduce((s,b) => s + b.units, 0);
-              if (sum > 0) out.push(' 💉 Bolus ' + roundTenth(sum) + 'u');
+              if (sum > 0) out.push(' 💉 Bolus ' + roundTenth(sum) + 'u  ●');
+              // Meal within ±5 min
+              if (showMeals) {
+                const nearM = meals.filter(m => Math.abs(m.t.getTime() - ts) < 5*60000);
+                nearM.forEach(m => { if(m.carbs>0) out.push(' 🍽️ ' + m.carbs + 'g carbs'); });
+              }
               return out;
             },
             labelColor: item => {
               const l = item.dataset.label;
-              const c = l === 'Glucose' ? '#00d4a0' : l === 'Meal' ? '#f472b6' : 'transparent';
+              const c = l === 'Glucose' ? '#00d4a0' : 'transparent';
               return { backgroundColor: c, borderColor: 'transparent' };
             },
             filter: item => item.dataset.label !== '_band'
@@ -951,7 +992,7 @@ function renderHourlyAvg(cgm){
   cgm.forEach(d=>blocks[Math.floor(d.t.getHours()/3)].push(d.v));
   const avgs=blocks.map(h=>h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length):null);
   const blkLabels=['12a–3a','3a–6a','6a–9a','9a–12p','12p–3p','3p–6p','6p–9p','9p–12a'];
-  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(0,212,160,0.85)':d<=20?'rgba(0,190,140,0.75)':d<=35?'rgba(255,179,71,0.8)':'rgba(226,75,74,0.85)';});
+  const colors=avgs.map(v=>{if(!v) return'rgba(136,135,128,0.3)';const d=Math.abs(v-100);return d<=10?'rgba(59,130,246,0.9)':d<=20?'rgba(0,190,140,0.75)':d<=35?'rgba(255,179,71,0.8)':'rgba(226,75,74,0.85)';});
   const grid='rgba(255,255,255,0.05)';
   const lc='rgba(240,240,240,0.85)';
   hourlyAvgChart=new Chart(document.getElementById('hourlyAvgChart'),{
