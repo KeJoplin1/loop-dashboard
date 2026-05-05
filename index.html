@@ -413,11 +413,16 @@ function parseAndRender(csvText){
   let defaultFrom=lastT?new Date(lastT):new Date();
   defaultFrom.setHours(0,0,0,0);
   let defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
-  // Step backward until we find a day with ≥200 readings (~16h+ of data)
+  // Find the most recent day with enough data - search backward from last reading
   for(let i=0;i<30;i++){
-    if(allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length>=200) break;
-    defaultFrom=new Date(defaultFrom.getTime()-86400000);
-    defaultTo=new Date(defaultFrom);defaultTo.setHours(23,59,59,999);
+    const count=allCGM.filter(d=>d.t>=defaultFrom&&d.t<=defaultTo).length;
+    if(count>=144) break; // 12h+ of 5-min readings
+    const prev=new Date(defaultFrom.getTime()-86400000);
+    prev.setHours(0,0,0,0);
+    const prevTo=new Date(prev);prevTo.setHours(23,59,59,999);
+    if(allCGM.filter(d=>d.t>=prev&&d.t<=prevTo).length>count){
+      defaultFrom=prev;defaultTo=prevTo;
+    } else break;
   }
   customFrom=new Date(defaultFrom);customTo=new Date(defaultTo);
   dayNavDate=new Date(defaultFrom);
@@ -700,15 +705,16 @@ function renderTraceChart() {
     afterDraw(chart) {
       const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
       const H      = bottom - top;
-      const SEP_Y  = top + H * 0.76;
+      const SEP_Y  = top + H * 0.78;
       const INS_H  = bottom - SEP_Y;
+      const INS_BOT = bottom;
       const xOf    = t => x.getPixelForValue(t);
       const yRate  = r => bottom - (r / maxRate)  * INS_H * 0.82;
       const yBolus = u => bottom - (u / maxBolus) * INS_H * 0.92;
 
       ctx.save();
 
-      // ── Separator ───────────────────────────────────────────────────────
+      // ── Separator (at bottom of glucose chartArea) ──────────────────────
       ctx.save();
       ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(left, SEP_Y); ctx.lineTo(right, SEP_Y); ctx.stroke();
@@ -718,7 +724,7 @@ function renderTraceChart() {
       ctx.fillStyle = 'rgba(200,195,215,0.45)';
       ctx.font = '600 9px -apple-system,sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText('Insulin', left + 4, SEP_Y + 12);
+      ctx.fillText('Insulin', left + 4, SEP_Y + 14);
 
       // ── Clip to insulin zone ────────────────────────────────────────────
       ctx.beginPath(); ctx.rect(left, SEP_Y, right - left, INS_H + 1); ctx.clip();
@@ -788,12 +794,13 @@ function renderTraceChart() {
           const my = chart.scales.y.getPixelForValue(Math.min(Math.max(near.v,40),230));
           const carbTxt = (m.carbs||0) > 0 ? m.carbs+'g' : 'meal';
           ctx.save();
-          // Vertical line from badge down to glucose dot only
-          ctx.strokeStyle='rgba(244,114,182,0.6)';ctx.lineWidth=1.5;
-          ctx.beginPath();ctx.moveTo(mx,py+PH);ctx.lineTo(mx,my-5);ctx.stroke();
-          // Carb badge — clamped within chart
+          // Declare badge dimensions first
           const PW=Math.max(28,carbTxt.length*6.5+10),PH=16;
           const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2),py=top+4;
+          // Vertical line from badge bottom down to glucose dot
+          ctx.strokeStyle='rgba(244,114,182,0.6)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.moveTo(mx,py+PH);ctx.lineTo(mx,my-5);ctx.stroke();
+          // Carb badge
           ctx.fillStyle='rgba(15,5,20,0.92)';ctx.strokeStyle='rgba(244,114,182,0.8)';ctx.lineWidth=1.2;
           if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,4);ctx.fill();ctx.stroke();}
           else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
@@ -860,7 +867,7 @@ function renderTraceChart() {
     afterDraw(chart) {
       const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
       const H = bottom - top;
-      const SEP_Y2 = top + H * 0.76;
+      const SEP_Y2 = top + (bottom-top)*0.78;
       const spanHrs = (xMax - xMin) / 3600000;
       const tickEvery = spanHrs <= 24 ? 1 : spanHrs <= 48 ? 2 : spanHrs <= 72 ? 3 : 6;
       ctx.save();
@@ -879,7 +886,7 @@ function renderTraceChart() {
         const lbl = currentDays > 1
           ? (h === 0 ? d.toLocaleDateString([], {month:'short',day:'numeric'}) : hh+ap)
           : hh+ap;
-        ctx.fillText(lbl, hx, SEP_Y2 - 5);
+        ctx.fillText(lbl, hx, SEP_Y2 - 3);
       }
       ctx.restore();
     }
