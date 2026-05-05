@@ -1111,18 +1111,24 @@ function renderAGP(cgm, boluses, basals) {
     return hh+ap;
   });
 
-  // Avg delivered basal by time-of-day
+  // Avg delivered basal by time-of-day — fill each minute of each segment
   const basalBuckets = Array.from({length: BINS}, () => []);
   const bs = [...basals].sort((a,b)=>a.t-b.t);
   bs.forEach((b,i) => {
     const segEnd = i<bs.length-1 ? bs[i+1].t.getTime() : b.t.getTime()+30*60000;
     const hrs = (segEnd-b.t.getTime())/3600000;
     const delRate = hrs>0 ? (b.delivered||0)/hrs : 0;
-    const bin = Math.floor((b.t.getHours()*60+b.t.getMinutes())/BIN_MIN);
-    if (bin >= 0 && bin < BINS) basalBuckets[bin].push(delRate);
+    // Fill ALL bins this segment spans, not just the start bin
+    const startBin = Math.floor((b.t.getHours()*60+b.t.getMinutes())/BIN_MIN);
+    const endBin = Math.floor(((new Date(segEnd)).getHours()*60+(new Date(segEnd)).getMinutes())/BIN_MIN);
+    const s = Math.min(startBin, endBin), e = Math.max(startBin, endBin);
+    for(let bin=s; bin<=Math.min(e,BINS-1); bin++) basalBuckets[bin].push(delRate);
   });
   const avgBasal = basalBuckets.map(b => b.length ? b.reduce((a,v)=>a+v,0)/b.length : null);
-  const maxBasal = Math.max(...avgBasal.filter(v=>v!=null), 0.1);
+  // Forward-fill nulls so the line is continuous
+  let lastVal = null;
+  const avgBasalFilled = avgBasal.map(v => { if(v!=null)lastVal=v; return lastVal; });
+  const maxBasal = Math.max(...avgBasalFilled.filter(v=>v!=null), 0.1);
 
   // Avg bolus by time-of-day bin
   const bolusBins = Array.from({length: BINS}, () => 0);
@@ -1160,7 +1166,7 @@ function renderAGP(cgm, boluses, basals) {
 
       // Avg basal fill
       ctx.fillStyle='rgba(167,139,250,0.2)';ctx.beginPath();let st=false;
-      avgBasal.forEach((v,i)=>{
+      avgBasalFilled.forEach((v,i)=>{
         if(v==null){st=false;return;}
         const bx=xOf(i),by=yR(v);
         if(!st){ctx.moveTo(bx,bottom);ctx.lineTo(bx,by);st=true;}
@@ -1172,7 +1178,7 @@ function renderAGP(cgm, boluses, basals) {
       ctx.strokeStyle='rgba(167,139,250,0.75)';ctx.lineWidth=1.5;
       // Collect non-null points
       const bPts=[];
-      avgBasal.forEach((v,i)=>{if(v!=null)bPts.push({x:xOf(i),y:yR(v)});});
+      avgBasalFilled.forEach((v,i)=>{if(v!=null)bPts.push({x:xOf(i),y:yR(v)});});
       if(bPts.length>1){
         ctx.beginPath();ctx.moveTo(bPts[0].x,bPts[0].y);
         for(let i=1;i<bPts.length;i++){
@@ -1184,14 +1190,33 @@ function renderAGP(cgm, boluses, basals) {
         ctx.stroke();
       }
 
-      // Avg bolus bars
-      avgBolus.forEach((v,i)=>{
-        if(!v) return;
-        const bx=xOf(i);
-        const bH=bottom-yB(v);
-        ctx.fillStyle='rgba(96,165,250,0.85)';
-        ctx.fillRect(bx-2,bottom-bH,4,bH);
-      });
+      // Avg bolus — smooth filled area curve
+      const bolusPts=[];
+      avgBolus.forEach((v,i)=>{ if(v!=null&&v>0) bolusPts.push({x:xOf(i),y:yB(v),i}); });
+      if(bolusPts.length>1){
+        // Fill
+        ctx.fillStyle='rgba(96,165,250,0.2)';
+        ctx.beginPath();ctx.moveTo(bolusPts[0].x,bottom);
+        bolusPts.forEach(p=>ctx.lineTo(p.x,p.y));
+        ctx.lineTo(bolusPts[bolusPts.length-1].x,bottom);
+        ctx.closePath();ctx.fill();
+        // Line
+        ctx.strokeStyle='rgba(96,165,250,0.75)';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.moveTo(bolusPts[0].x,bolusPts[0].y);
+        for(let i=1;i<bolusPts.length;i++){
+          const p=bolusPts[i-1],n=bolusPts[i];
+          ctx.bezierCurveTo(p.x+(n.x-p.x)*0.4,p.y,p.x+(n.x-p.x)*0.6,n.y,n.x,n.y);
+        }
+        ctx.stroke();
+      } else {
+        // Fallback: individual bars for sparse data
+        avgBolus.forEach((v,i)=>{
+          if(!v) return;
+          const bx=xOf(i),bH=bottom-yB(v);
+          ctx.fillStyle='rgba(96,165,250,0.85)';
+          ctx.fillRect(bx-2,bottom-bH,4,bH);
+        });
+      }
 
       // Time labels above separator
       ctx.fillStyle='rgba(130,125,150,0.7)';ctx.font='500 8px -apple-system,sans-serif';
@@ -1238,24 +1263,7 @@ function renderAGP(cgm, boluses, basals) {
         borderColor:'rgba(255,77,109,0.3)', borderWidth:1, borderDash:[5,5],
         pointRadius:0, fill:false, datalabels:{display:false} },
     ]},
-    plugins: [insPlugin, {
-      id:'agpZones',
-      beforeDraw(chart){
-        const{ctx,chartArea:{left,right,top,bottom},scales:{y}}=chart;
-        ctx.save();
-        // Color zones: red below 70, amber above target
-        const zones=[
-          {min:0,max:LOW,c:'rgba(255,77,109,0.07)'},
-          {min:HIGH_TIR,max:250,c:'rgba(255,179,71,0.06)'},
-          {min:250,max:400,c:'rgba(226,75,74,0.08)'},
-        ];
-        zones.forEach(z=>{
-          const yT=Math.max(top,y.getPixelForValue(z.max)),yB=Math.min(bottom,y.getPixelForValue(z.min));
-          if(yB>yT){ctx.fillStyle=z.c;ctx.fillRect(left,yT,right-left,yB-yT);}
-        });
-        ctx.restore();
-      }
-    }],
+    plugins: [insPlugin],
     options: {
       responsive:true, maintainAspectRatio:false,
       animation:{ duration:300 },
@@ -1982,7 +1990,7 @@ function renderSensitivityChart(boluses,basals){
         pointRadius:5,pointHoverRadius:7,
         pointBackgroundColor:ptColors,
         pointBorderColor:ptBorder,pointBorderWidth:1.5,
-        tension:0.3,fill:false,datalabels:{display:false}},
+        tension:0,fill:false,datalabels:{display:false}},
       // 7d rolling avg — smooth line, no dots until hover
       {label:'7d avg',data:rolling7,
         borderColor:'#00d4a0',borderWidth:2.5,
@@ -2122,142 +2130,94 @@ function renderInsights(cgm,boluses,basals){
 }
 
 
-// ── POST-MEAL RESPONSE CURVE ─────────────────────────────────────────────
-let postmealCurveChart=null;
-function renderPostMealCurve(cgm,meals,boluses){
-  if(postmealCurveChart) postmealCurveChart.destroy();
-  const canvas=document.getElementById('postmealCurveChart');
-  const statsEl=document.getElementById('postmeal-stats');
-  if(!canvas) return;
+// ── MEAL RESPONSE STATS ─────────────────────────────────────────────────────
+let postmealCurveChart = null;
+function renderPostMealCurve(cgm, meals, boluses) {
+  if(postmealCurveChart){postmealCurveChart.destroy();postmealCurveChart=null;}
+  const statsEl = document.getElementById('postmeal-stats');
+  if(!statsEl) return;
   if(!meals||!meals.length){
-    if(statsEl) statsEl.innerHTML='<div style="font-size:12px;color:var(--text3)">No meal data available. Run the updated sync script to pull carb entries from Tidepool.</div>';
+    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No meal data in selected range.</div>';
     return;
   }
+
   const BEFORE=120,AFTER=180,STEP=5;
-  const glucBuckets={},bolusBuckets={};
-  for(let m=-BEFORE;m<=AFTER;m+=STEP){glucBuckets[m]=[];bolusBuckets[m]=[];}
+  const glucBuckets={};
+  for(let m=-BEFORE;m<=AFTER;m+=STEP) glucBuckets[m]=[];
   let mealCount=0;
+
   meals.forEach(meal=>{
     const mT=meal.t.getTime();
-    const relevantCGM=cgm.filter(d=>Math.abs(d.t.getTime()-mT)<=(BEFORE+AFTER)*60000);
-    if(relevantCGM.length<5) return;
+    const nearby=cgm.filter(d=>Math.abs(d.t.getTime()-mT)<=(BEFORE+AFTER)*60000);
+    if(nearby.length<5) return;
     mealCount++;
     for(let min=-BEFORE;min<=AFTER;min+=STEP){
       const target=mT+min*60000;
-      const near=relevantCGM.reduce((best,d)=>Math.abs(d.t.getTime()-target)<Math.abs(best.t.getTime()-target)?d:best,relevantCGM[0]);
+      const near=nearby.reduce((b,d)=>Math.abs(d.t.getTime()-target)<Math.abs(b.t.getTime()-target)?d:b,nearby[0]);
       if(Math.abs(near.t.getTime()-target)<8*60000) glucBuckets[min].push(near.v);
     }
-    // Accumulate manual boluses (≥0.5u) within this meal's window only
-    if(boluses){
-      boluses.filter(b=>b.units>=0.5).forEach(b=>{
-        const offset=(b.t.getTime()-mT)/60000;
-        // snap to nearest bucket
-        const bucket=Math.round(offset/STEP)*STEP;
-        if(bolusBuckets[bucket]!==undefined) bolusBuckets[bucket].push(b.units);
-      });
-    }
   });
-  if(mealCount===0){
-    if(statsEl) statsEl.innerHTML='<div style="font-size:12px;color:var(--text3)">No meals with sufficient CGM data found in this range.</div>';
+
+  if(!mealCount){
+    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">Not enough CGM data around meal times.</div>';
     return;
   }
+
   const labels=Object.keys(glucBuckets).map(Number).sort((a,b)=>a-b);
-  const avgCurve=labels.map(m=>glucBuckets[m].length?Math.round(glucBuckets[m].reduce((a,b)=>a+b,0)/glucBuckets[m].length):null);
-  // Avg bolus per meal at each time bucket (only show non-zero)
-  const avgBolus=labels.map(m=>bolusBuckets[m]&&bolusBuckets[m].length?(Math.round(bolusBuckets[m].reduce((a,b)=>a+b,0)/mealCount*10)/10)||null:null);
+  const avgFn=m=>glucBuckets[m]&&glucBuckets[m].length?Math.round(glucBuckets[m].reduce((a,b)=>a+b,0)/glucBuckets[m].length):null;
+  const avgCurve=labels.map(avgFn);
 
-  const baselineMins=labels.filter(m=>m>=-30&&m<=0);
-  const baselineVals=baselineMins.map(m=>avgCurve[labels.indexOf(m)]).filter(v=>v!=null);
-  const baseline=baselineVals.length?Math.round(baselineVals.reduce((a,b)=>a+b,0)/baselineVals.length):null;
-  const nonNullVals=avgCurve.filter(v=>v!=null);
-  const postPeak=nonNullVals.length?Math.max(...nonNullVals):0;
-  const peakIdx=avgCurve.indexOf(postPeak);
-  const peakMin=labels[peakIdx];
+  const baseVals=labels.filter(m=>m>=-30&&m<=0).map(m=>avgFn(m)).filter(v=>v!=null);
+  const baseline=baseVals.length?Math.round(baseVals.reduce((a,b)=>a+b,0)/baseVals.length):null;
+  const postVals=avgCurve.filter((v,i)=>v!=null&&labels[i]>0);
+  const postPeak=postVals.length?Math.max(...postVals):null;
+  const peakIdx=postPeak?avgCurve.indexOf(postPeak):-1;
+  const peakMin=peakIdx>=0?labels[peakIdx]:null;
   const delta=baseline&&postPeak?postPeak-baseline:null;
-  const returnIdx=peakIdx>=0?avgCurve.slice(peakIdx).findIndex((v)=>v!=null&&v<=(baseline||postPeak-10)):-1;
-  const returnMin=returnIdx>=0?labels[peakIdx+returnIdx]:null;
 
-  const HIGH_TIR_PM=tirMode==='tight'?140:HIGH;
-  const grid='rgba(255,255,255,0.05)';
-  const labelData=labels.map(m=>m===0?'Meal':(m>0?'+'+m+'m':m+'m'));
-  const mealIdx=labelData.indexOf('Meal');
-
-  // Get y-scale range for positioning bolus bars
-  const allGlucVals=avgCurve.filter(v=>v!=null);
-  const yMin=allGlucVals.length?Math.min(...allGlucVals)-10:60;
-  const yMax=allGlucVals.length?Math.max(...allGlucVals)+15:200;
-
-  const mealLinePlugin={
-    id:'mealLine',
-    afterDraw(chart){
-      if(mealIdx<0) return;
-      const{ctx,chartArea:{top,bottom},scales:{x}}=chart;
-      const xPos=x.getPixelForValue(mealIdx);
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(xPos,top);ctx.lineTo(xPos,bottom);
-      ctx.strokeStyle='rgba(244,114,182,0.55)';
-      ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
-      ctx.stroke();ctx.restore();
-    }
-  };
-
-  postmealCurveChart=new Chart(canvas,{
-    type:'bar',
-    data:{labels:labelData,datasets:[
-      // Bolus bars (bar type, y-axis right)
-      {type:'bar',label:'Avg bolus',data:avgBolus,backgroundColor:'rgba(96,165,250,0.65)',borderColor:'rgba(96,165,250,0.95)',borderWidth:1,borderRadius:3,yAxisID:'yBolus',barThickness:12,datalabels:{display:true,anchor:'end',align:'end',color:'#60a5fa',font:{size:8,weight:'700'},formatter:v=>v?v+'u':''}},
-      // Glucose line
-      {type:'line',label:'Avg glucose',data:avgCurve,borderColor:'#f472b6',borderWidth:2,pointRadius:avgCurve.map((_,i)=>i===peakIdx?5:0),pointBackgroundColor:'#f472b6',tension:0.3,fill:false,yAxisID:'y',datalabels:{display:false}},
-      // Baseline dashed
-      {type:'line',label:'Baseline',data:labels.map(()=>baseline),borderColor:'rgba(255,255,255,0.12)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,yAxisID:'y',datalabels:{display:false}},
-      // Target band
-      {type:'line',label:'Target',data:labels.map(()=>HIGH_TIR_PM),borderColor:'rgba(255,179,71,0.2)',borderWidth:1,borderDash:[3,4],pointRadius:0,fill:false,yAxisID:'y',datalabels:{display:false}},
-    ]},
-    plugins:[mealLinePlugin],
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},datalabels:{display:true},
-        tooltip:{filter:ctx=>ctx.datasetIndex<=1,callbacks:{
-          title:ctx=>ctx[0].label==='Meal'?'Meal time':ctx[0].label,
-          label:ctx=>ctx.dataset.label+': '+(ctx.datasetIndex===0?ctx.parsed.y+'u':ctx.parsed.y+' mg/dL')
-        }}},
-      scales:{
-        x:{ticks:{color:'#505058',font:{size:9},maxTicksLimit:12},grid:{color:grid}},
-        y:{position:'left',min:yMin,max:yMax,ticks:{color:'#505058',font:{size:10}},grid:{color:grid}},
-        yBolus:{position:'right',min:0,max:Math.max(...avgBolus.filter(v=>v!=null),1)*2,ticks:{display:false},grid:{display:false}}
-      }}
-  });
-  if(statsEl){
-    const peakCls=postPeak>HIGH_TIR_PM?'#ffb347':'#00d4a0';
-    const riseCls=delta?delta>60?'#ff4d6d':delta>30?'#ffb347':'#00d4a0':'#00d4a0';
-    const totalBolusNearMeal=avgBolus.filter(v=>v!=null).reduce((s,v)=>s+v,0);
-    statsEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-top:6px">
-      <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Meals</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">${mealCount}</div>
-      </div>
-      ${baseline?`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Pre-meal</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">${baseline}<span style="font-size:10px;color:var(--text3)"> mg</span></div>
-      </div>`:''}
-      <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Peak</div>
-        <div style="font-size:20px;font-weight:700;color:${peakCls}">${postPeak}<span style="font-size:10px;color:var(--text3)"> mg</span></div>
-      </div>
-      ${delta?`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Rise</div>
-        <div style="font-size:20px;font-weight:700;color:${riseCls}">+${delta}<span style="font-size:10px;color:var(--text3)"> mg</span></div>
-      </div>`:''}
-      ${peakMin!==null?`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Peak at</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">+${peakMin}<span style="font-size:10px;color:var(--text3)">m</span></div>
-      </div>`:''}
-      ${boluses&&totalBolusNearMeal>0?`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Avg bolus</div>
-        <div style="font-size:20px;font-weight:700;color:#60a5fa">${Math.round(totalBolusNearMeal*10)/10}<span style="font-size:10px;color:var(--text3)">u</span></div>
-      </div>`:''}
-    </div>`;
+  let returnMin=null;
+  if(peakIdx>0&&baseline){
+    const tail=avgCurve.slice(peakIdx);
+    const ri=tail.findIndex(v=>v!=null&&v<=baseline+10);
+    if(ri>=0) returnMin=labels[peakIdx+ri];
   }
+
+  const bolusNearMeal=boluses?boluses.filter(b=>meals.some(m=>Math.abs(b.t-m.t)<30*60000)):[];
+  const avgMealBolus=bolusNearMeal.length?Math.round(bolusNearMeal.reduce((s,b)=>s+b.units,0)/mealCount*10)/10:null;
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
+  const postMealVals=labels.filter(m=>m>=0&&m<=180).map(avgFn).filter(v=>v!=null);
+  const pmTIR=postMealVals.length?Math.round(postMealVals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/postMealVals.length*100):null;
+
+  const mealsWithBoth=meals.filter(m=>m.carbs>0&&bolusNearMeal.find(b=>Math.abs(b.t-m.t)<30*60000));
+  let avgICR=null;
+  if(mealsWithBoth.length){
+    const icrs=mealsWithBoth.map(m=>{const b=bolusNearMeal.find(bl=>Math.abs(bl.t-m.t)<30*60000);return b&&b.units>0?Math.round(m.carbs/b.units):null;}).filter(v=>v!=null);
+    if(icrs.length) avgICR=Math.round(icrs.reduce((a,b)=>a+b,0)/icrs.length);
+  }
+
+  function statCard(label, value, unit, color) {
+    return '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">'
+      + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">' + label + '</div>'
+      + '<div style="font-size:22px;font-weight:700;color:' + (color||'var(--text)') + ';line-height:1.1">' + value
+      + (unit ? '<span style="font-size:9px;color:var(--text3);margin-left:2px">' + unit + '</span>' : '')
+      + '</div></div>';
+  }
+
+  const peakCol=postPeak?(postPeak>HIGH_TIR?'#ffb347':'#00d4a0'):'var(--text)';
+  const riseCol=delta?(delta>60?'#ff4d6d':delta>30?'#ffb347':'#00d4a0'):'var(--text)';
+  const tirCol=pmTIR!=null?(pmTIR>=85?'#00d4a0':pmTIR>=70?'#ffb347':'#ff4d6d'):'var(--text)';
+
+  let cards=statCard('Meals',mealCount,'','var(--text)');
+  if(baseline)      cards+=statCard('Pre-meal',baseline,'mg','var(--text)');
+  if(postPeak)      cards+=statCard('Peak',postPeak,'mg',peakCol);
+  if(delta)         cards+=statCard('Rise','+'+delta,'mg',riseCol);
+  if(peakMin!=null) cards+=statCard('Peak at','+'+peakMin,'m','var(--text)');
+  if(returnMin)     cards+=statCard('Returns','+'+returnMin,'m','var(--text)');
+  if(pmTIR!=null)   cards+=statCard('Post-meal TIR',pmTIR,'%',tirCol);
+  if(avgMealBolus)  cards+=statCard('Avg bolus',avgMealBolus,'u','#60a5fa');
+  if(avgICR)        cards+=statCard('Est. ICR','1:'+avgICR,'g/u','var(--text)');
+
+  statsEl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-top:4px">'+cards+'</div>';
 }
 
 // ── GLUCOSE HISTOGRAM ──────────────────────────────────────────────────────
@@ -2300,120 +2260,4 @@ async function exportPDF(){
 loadFromOneDrive();
 </script>
 </body>
-</html>// ── MEAL RESPONSE STATS ─────────────────────────────────────────────────────
-let postmealCurveChart = null; // kept for compat, not used
-function renderPostMealCurve(cgm, meals, boluses) {
-  if(postmealCurveChart){postmealCurveChart.destroy();postmealCurveChart=null;}
-  const statsEl = document.getElementById('postmeal-stats');
-  if(!statsEl) return;
-  if(!meals||!meals.length){
-    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No meal data in selected range.</div>';
-    return;
-  }
-
-  const BEFORE=120,AFTER=180,STEP=5;
-  const glucBuckets={};
-  for(let m=-BEFORE;m<=AFTER;m+=STEP) glucBuckets[m]=[];
-  let mealCount=0;
-
-  meals.forEach(meal=>{
-    const mT=meal.t.getTime();
-    const nearby=cgm.filter(d=>Math.abs(d.t.getTime()-mT)<=(BEFORE+AFTER)*60000);
-    if(nearby.length<5) return;
-    mealCount++;
-    for(let min=-BEFORE;min<=AFTER;min+=STEP){
-      const target=mT+min*60000;
-      const near=nearby.reduce((b,d)=>Math.abs(d.t.getTime()-target)<Math.abs(b.t.getTime()-target)?d:b,nearby[0]);
-      if(Math.abs(near.t.getTime()-target)<8*60000) glucBuckets[min].push(near.v);
-    }
-  });
-
-  if(!mealCount){
-    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">Not enough CGM data around meal times.</div>';
-    return;
-  }
-
-  const labels=Object.keys(glucBuckets).map(Number).sort((a,b)=>a-b);
-  const avg=m=>glucBuckets[m].length?Math.round(glucBuckets[m].reduce((a,b)=>a+b,0)/glucBuckets[m].length):null;
-  const avgCurve=labels.map(avg);
-
-  const baseVals=labels.filter(m=>m>=-30&&m<=0).map(m=>avg(m)).filter(v=>v!=null);
-  const baseline=baseVals.length?Math.round(baseVals.reduce((a,b)=>a+b,0)/baseVals.length):null;
-  const postVals=avgCurve.filter((v,i)=>v!=null&&labels[i]>0);
-  const postPeak=postVals.length?Math.max(...postVals):null;
-  const peakIdx=postPeak?avgCurve.indexOf(postPeak):-1;
-  const peakMin=peakIdx>=0?labels[peakIdx]:null;
-  const delta=baseline&&postPeak?postPeak-baseline:null;
-
-  // Return-to-baseline: first point after peak where avg <= baseline+10
-  let returnMin=null;
-  if(peakIdx>0&&baseline){
-    const tail=avgCurve.slice(peakIdx);
-    const ri=tail.findIndex(v=>v!=null&&v<=baseline+10);
-    if(ri>=0) returnMin=labels[peakIdx+ri];
-  }
-
-  // Near-meal boluses
-  const bolusNearMeal=boluses?boluses.filter(b=>meals.some(m=>Math.abs(b.t-m.t)<30*60000)):[];
-  const avgMealBolus=bolusNearMeal.length?Math.round(bolusNearMeal.reduce((s,b)=>s+b.units,0)/mealCount*10)/10:null;
-
-  // Time in range during post-meal window (0–180 min)
-  const HIGH_TIR=tirMode==='tight'?140:HIGH;
-  const postMealVals=labels.filter(m=>m>=0&&m<=180).map(avg).filter(v=>v!=null);
-  const pmTIR=postMealVals.length?Math.round(postMealVals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/postMealVals.length*100):null;
-
-  // ICR estimate (carbs ÷ bolus)
-  const mealsWithBoth=meals.filter(m=>m.carbs>0&&bolusNearMeal.find(b=>Math.abs(b.t-m.t)<30*60000));
-  let avgICR=null;
-  if(mealsWithBoth.length){
-    const icrs=mealsWithBoth.map(m=>{
-      const b=bolusNearMeal.find(bl=>Math.abs(bl.t-m.t)<30*60000);
-      return b&&b.units>0?Math.round(m.carbs/b.units):null;
-    }).filter(v=>v!=null);
-    if(icrs.length) avgICR=Math.round(icrs.reduce((a,b)=>a+b,0)/icrs.length);
-  }
-
-  const peakCol=postPeak?(postPeak>HIGH_TIR?'#ffb347':postPeak>HIGH_TIR*0.8?'#00d4a0':'#00d4a0'):'#00d4a0';
-  const riseCol=delta?(delta>60?'#ff4d6d':delta>30?'#ffb347':'#00d4a0'):'#00d4a0';
-  const tirCol=pmTIR!=null?(pmTIR>=85?'#00d4a0':pmTIR>=70?'#ffb347':'#ff4d6d'):'var(--text)';
-
-  statsEl.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-top:4px">
-      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Meals</div>
-        <div style="font-size:24px;font-weight:700;color:var(--text)">${mealCount}</div>
-      </div>
-      ${baseline?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Pre-meal</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">${baseline}<span style="font-size:9px;color:var(--text3)"> mg</span></div>
-      </div>`:''}
-      ${postPeak?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Peak</div>
-        <div style="font-size:20px;font-weight:700;color:${peakCol}">${postPeak}<span style="font-size:9px;color:var(--text3)"> mg</span></div>
-      </div>`:''}
-      ${delta?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Rise</div>
-        <div style="font-size:20px;font-weight:700;color:${riseCol}">+${delta}<span style="font-size:9px;color:var(--text3)"> mg</span></div>
-      </div>`:''}
-      ${peakMin!=null?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Peak at</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">+${peakMin}<span style="font-size:9px;color:var(--text3)">m</span></div>
-      </div>`:''}
-      ${returnMin?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Returns</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">+${returnMin}<span style="font-size:9px;color:var(--text3)">m</span></div>
-      </div>`:''}
-      ${pmTIR!=null?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Post-meal TIR</div>
-        <div style="font-size:20px;font-weight:700;color:${tirCol}">${pmTIR}<span style="font-size:9px;color:var(--text3)">%</span></div>
-      </div>`:''}
-      ${avgMealBolus?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Avg bolus</div>
-        <div style="font-size:20px;font-weight:700;color:#60a5fa">${avgMealBolus}<span style="font-size:9px;color:var(--text3)">u</span></div>
-      </div>`:''}
-      ${avgICR?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Est. ICR</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">1:${avgICR}<span style="font-size:9px;color:var(--text3)"> g/u</span></div>
-      </div>`:''}
-    </div>`;
-}
+</html>
