@@ -778,46 +778,7 @@ function renderTraceChart() {
       });
 
       // ── Meal markers — vertical line + carb label, NO triangle ─────────────
-      // Draw meal markers from filteredMeals AND from boluses with carbs
-      const mealMarkers = [...meals];
-      // Add bolus-carb entries that aren't already in meals
-      boluses.forEach(b => {
-        if ((b.carbs||0) > 0 && !mealMarkers.find(m => Math.abs(m.t-b.t) < 60000)) {
-          mealMarkers.push({t: b.t, carbs: b.carbs});
-        }
-      });
-      if (showMeals && mealMarkers.length) {
-        mealMarkers.forEach(m => {
-          const mx = xOf(m.t.getTime());
-          if (mx < left || mx > right) return;
-          const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
-          const my = chart.scales.y.getPixelForValue(near.v);
-          const carbTxt = m.carbs > 0 ? m.carbs+'g' : 'meal';
-
-          ctx.save();
-
-          // Solid vertical line from top of glucose zone to bottom
-          ctx.strokeStyle='rgba(244,114,182,0.55)';ctx.lineWidth=1.5;
-          ctx.setLineDash([]);
-          ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,SEP_Y);ctx.stroke();
-
-          // Carb label badge — clamped so it never overflows chart
-          const PW=Math.max(28,carbTxt.length*6.5+10), PH=16;
-          const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2), py=top+3;
-          ctx.fillStyle='rgba(15,5,20,0.9)';
-          ctx.strokeStyle='rgba(244,114,182,0.8)';ctx.lineWidth=1.2;
-          if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,4);ctx.fill();ctx.stroke();}
-          else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
-          ctx.fillStyle='#f472b6';ctx.font='600 9px -apple-system,sans-serif';
-          ctx.textAlign='center';ctx.fillText(carbTxt,px+PW/2,py+PH-4);
-
-          // Pink filled circle on glucose trace (no triangle)
-          ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=1.5;
-          ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);ctx.fill();ctx.stroke();
-
-          ctx.restore();
-        });
-      }
+      // Meals drawn by mealPlugin (separate plugin, no clip restriction)
 
       ctx.restore();
 
@@ -895,7 +856,45 @@ function renderTraceChart() {
 
   _tc = new Chart(document.getElementById('traceChart'), {
     data: { datasets },
-    plugins: [exPlugin, insPlugin],
+    const mealPlugin = {
+    id: 'meals',
+    afterDraw(chart) {
+      if (!showMeals) return;
+      const {ctx, chartArea:{left,right,top,bottom}, scales:{x,y}} = chart;
+      const SEP_Y = top + (bottom-top)*0.76;
+      const xMin = cgm[0].t.getTime(), xMax = cgm[cgm.length-1].t.getTime();
+      const xOfT = t => left + (t-xMin)/(xMax-xMin)*(right-left);
+      // Build markers from filteredMeals + boluses with carbs
+      const markers = [...meals];
+      boluses.forEach(b=>{if((b.carbs||0)>0&&!markers.find(m=>Math.abs(m.t-b.t)<60000))markers.push({t:b.t,carbs:b.carbs});});
+      if(!markers.length) return;
+      ctx.save();
+      markers.forEach(m=>{
+        const mx = xOfT(m.t.getTime());
+        if(mx<left||mx>right) return;
+        const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
+        const my = y.getPixelForValue(near.v);
+        const carbTxt = m.carbs>0 ? m.carbs+'g' : 'meal';
+        // Vertical line (glucose zone only, stops at separator)
+        ctx.strokeStyle='rgba(244,114,182,0.55)';ctx.lineWidth=1.5;ctx.setLineDash([]);
+        ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,SEP_Y);ctx.stroke();
+        // Carb badge
+        const PW=Math.max(30,carbTxt.length*6.5+12),PH=16;
+        const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2),py=top+3;
+        ctx.fillStyle='rgba(15,5,20,0.92)';
+        ctx.strokeStyle='rgba(244,114,182,0.8)';ctx.lineWidth=1.2;
+        if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,4);ctx.fill();ctx.stroke();}
+        else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
+        ctx.fillStyle='#f472b6';ctx.font='600 9px -apple-system,sans-serif';
+        ctx.textAlign='center';ctx.fillText(carbTxt,px+PW/2,py+PH-4);
+        // Pink circle on glucose trace
+        ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.45)';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+      });
+      ctx.restore();
+    }
+  };
+  plugins: [exPlugin, insPlugin, mealPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1032,9 +1031,9 @@ function renderTraceChart() {
     },0);
     const el=document.getElementById('basal-summary');
     if(el) el.innerHTML=`
-      <span>Avg delivered: <strong style="color:#a78bfa">${avgDel.toFixed(2)} u/hr</strong></span>
-      <span>Avg scheduled: <strong style="color:rgba(167,139,250,0.55)">${avgCmd.toFixed(2)} u/hr</strong></span>
-      <span>${pctDel<100?`Delivered <strong style="color:#a78bfa">${pctDel}%</strong> of scheduled`:'<strong style="color:#00d4a0">Full delivery</strong>'}</span>
+      <span>Avg delivered: <strong style="color:${(()=>{const p=avgCmd>0?avgDel/avgCmd:1;return p>=0.95?'#00d4a0':p>=0.75?'#ffb347':p>=0.5?'#ff8c42':'#ff4d6d';})()}">${avgDel.toFixed(2)} u/hr</strong></span>
+      <span style="color:var(--text3)">Avg scheduled: <strong style="color:rgba(220,215,235,0.65)">${avgCmd.toFixed(2)} u/hr</strong></span>
+      <span>${(()=>{const col=pctDel>=95?'#00d4a0':pctDel>=75?'#ffb347':pctDel>=50?'#ff8c42':'#ff4d6d';return pctDel<100?`Delivered <strong style="color:${col}">${pctDel}%</strong> of scheduled`:'<strong style="color:#00d4a0">✓ Full delivery</strong>';})()} </span>
       ${suspendedHrs>0.1?`<span>Suspended: <strong style="color:#ffb347">${suspendedHrs.toFixed(1)}h</strong></span>`:''}
     `;
   }
