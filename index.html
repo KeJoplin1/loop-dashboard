@@ -709,35 +709,10 @@ function renderTraceChart() {
       ctx.save();
 
       // ── Separator ───────────────────────────────────────────────────────
+      ctx.save();
       ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(left, SEP_Y); ctx.lineTo(right, SEP_Y); ctx.stroke();
-
-      // ── Hour tick marks + labels along separator ─────────────────────────
-      const firstHour = new Date(xMin); firstHour.setMinutes(0,0,0);
-      if (firstHour.getTime() < xMin) firstHour.setHours(firstHour.getHours()+1);
-      ctx.fillStyle = 'rgba(140,135,160,0.65)';
-      ctx.font = '500 8px -apple-system,sans-serif';
-      ctx.textAlign = 'center';
-      const spanHrs = (xMax - xMin) / 3600000;
-      const tickEvery = spanHrs <= 24 ? 1 : spanHrs <= 72 ? 3 : 6; // 1h, 3h, or 6h ticks
-      let hT = new Date(firstHour);
-      while (hT.getTime() <= xMax) {
-        const hx = xOf(hT.getTime());
-        if (hx >= left+4 && hx <= right-4) {
-          const h = hT.getHours();
-          if (h % tickEvery === 0) {
-            // Tick
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(hx, SEP_Y-3); ctx.lineTo(hx, SEP_Y+3); ctx.stroke();
-            // Label — show above separator
-            if (hx > left+16 && hx < right-16) {
-              const hh = h%12||12, ap = h>=12?'p':'a';
-              ctx.fillText(hh+ap, hx, SEP_Y-6);
-            }
-          }
-        }
-        hT = new Date(hT.getTime() + 3600000);
-      }
+      ctx.restore();
 
       // ── "Insulin" label inside the lane (not outside where it clips) ────
       ctx.fillStyle = 'rgba(200,195,215,0.45)';
@@ -878,6 +853,38 @@ function renderTraceChart() {
     }
   };
 
+  // ── X-axis time labels plugin ─────────────────────────────────────────────
+  // Draws hour labels along the bottom edge of the glucose zone (just above insulin lane)
+  const timePlugin = {
+    id: 'time',
+    afterDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+      const H = bottom - top;
+      const SEP_Y2 = top + H * 0.76;
+      const spanHrs = (xMax - xMin) / 3600000;
+      const tickEvery = spanHrs <= 24 ? 1 : spanHrs <= 48 ? 2 : spanHrs <= 72 ? 3 : 6;
+      ctx.save();
+      ctx.fillStyle = 'rgba(130,125,150,0.7)';
+      ctx.font = '500 8px -apple-system,sans-serif';
+      ctx.textAlign = 'center';
+      // Start from first full hour
+      const startMs = Math.ceil(xMin / 3600000) * 3600000;
+      for (let ts = startMs; ts <= xMax; ts += 3600000) {
+        const d = new Date(ts);
+        const h = d.getHours();
+        if (h % tickEvery !== 0) continue;
+        const hx = x.getPixelForValue(ts);
+        if (hx < left + 12 || hx > right - 12) continue;
+        const hh = h % 12 || 12, ap = h >= 12 ? 'p' : 'a';
+        const lbl = currentDays > 1
+          ? (h === 0 ? d.toLocaleDateString([], {month:'short',day:'numeric'}) : hh+ap)
+          : hh+ap;
+        ctx.fillText(lbl, hx, SEP_Y2 - 5);
+      }
+      ctx.restore();
+    }
+  };
+
   // ── Exercise bands ────────────────────────────────────────────────────────
   const exPlugin = {
     id: 'ex',
@@ -905,7 +912,7 @@ function renderTraceChart() {
 
   _tc = new Chart(document.getElementById('traceChart'), {
     data: { datasets },
-    plugins: [exPlugin, insPlugin],
+    plugins: [exPlugin, insPlugin, timePlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
