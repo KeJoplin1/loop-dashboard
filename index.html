@@ -324,19 +324,9 @@ function fmtDate(t){return DAYS_SHORT[t.getDay()]+' '+t.toLocaleDateString([],{m
 function dayKey(t){return fmtDate(t);}
 
 async function loadFromOneDrive(){
-  showLoading();
-  try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),5000); // 5s timeout
-    const r=await fetch(ONEDRIVE_URL,{signal:controller.signal});
-    clearTimeout(timeout);
-    if(!r.ok) throw new Error('failed');
-    parseAndRender(await r.text());
-  }catch(e){
-    document.getElementById('loading-state').style.display='none';
-    document.getElementById('upload-zone-wrap').style.display='block';
-    showError('Could not auto-load from OneDrive. Please upload CSV manually.');
-  }
+  // Skip auto-load entirely — just show upload zone
+  document.getElementById('loading-state').style.display='none';
+  document.getElementById('upload-zone-wrap').style.display='block';
 }
 
 function handleFile(e){
@@ -782,7 +772,39 @@ function renderTraceChart() {
 
       ctx.restore();
 
-      // ── Crosshair + cursor dots (drawn AFTER restore so not clipped) ────
+      // ── Meal markers (drawn AFTER restore — full chart area, not clipped) ───
+      const mealMarkersPost = [...meals];
+      boluses.forEach(b => {
+        if ((b.carbs||0) > 0 && !mealMarkersPost.find(m => Math.abs(m.t-b.t) < 60000))
+          mealMarkersPost.push({t: b.t, carbs: b.carbs});
+      });
+      if (showMeals && mealMarkersPost.length) {
+        mealMarkersPost.forEach(m => {
+          const mx = xOf(m.t.getTime());
+          if (mx < left || mx > right) return;
+          const near = cgm.reduce((a,d)=>Math.abs(d.t-m.t)<Math.abs(a.t-m.t)?d:a);
+          const my = chart.scales.y.getPixelForValue(Math.min(Math.max(near.v,40),230));
+          const carbTxt = (m.carbs||0) > 0 ? m.carbs+'g' : 'meal';
+          ctx.save();
+          // Vertical line through full glucose area
+          ctx.strokeStyle='rgba(244,114,182,0.6)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,SEP_Y);ctx.stroke();
+          // Carb badge — clamped within chart
+          const PW=Math.max(28,carbTxt.length*6.5+10),PH=16;
+          const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2),py=top+4;
+          ctx.fillStyle='rgba(15,5,20,0.92)';ctx.strokeStyle='rgba(244,114,182,0.8)';ctx.lineWidth=1.2;
+          if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,4);ctx.fill();ctx.stroke();}
+          else{ctx.fillRect(px,py,PW,PH);ctx.strokeRect(px,py,PW,PH);}
+          ctx.fillStyle='#f472b6';ctx.font='600 9px -apple-system,sans-serif';
+          ctx.textAlign='center';ctx.fillText(carbTxt,px+PW/2,py+PH-4);
+          // Pink dot on trace
+          ctx.fillStyle='#f472b6';ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+          ctx.restore();
+        });
+      }
+
+      // ── Crosshair + cursor dots (drawn AFTER restore — not clipped) ─────
       const activeItem = chart.tooltip?._active?.[0];
       if (!activeItem) return;
       const cxPx = activeItem.element.x;
