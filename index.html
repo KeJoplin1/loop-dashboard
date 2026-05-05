@@ -712,6 +712,33 @@ function renderTraceChart() {
       ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(left, SEP_Y); ctx.lineTo(right, SEP_Y); ctx.stroke();
 
+      // ── Hour tick marks + labels along separator ─────────────────────────
+      const firstHour = new Date(xMin); firstHour.setMinutes(0,0,0);
+      if (firstHour.getTime() < xMin) firstHour.setHours(firstHour.getHours()+1);
+      ctx.fillStyle = 'rgba(140,135,160,0.65)';
+      ctx.font = '500 8px -apple-system,sans-serif';
+      ctx.textAlign = 'center';
+      const spanHrs = (xMax - xMin) / 3600000;
+      const tickEvery = spanHrs <= 24 ? 1 : spanHrs <= 72 ? 3 : 6; // 1h, 3h, or 6h ticks
+      let hT = new Date(firstHour);
+      while (hT.getTime() <= xMax) {
+        const hx = xOf(hT.getTime());
+        if (hx >= left+4 && hx <= right-4) {
+          const h = hT.getHours();
+          if (h % tickEvery === 0) {
+            // Tick
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(hx, SEP_Y-3); ctx.lineTo(hx, SEP_Y+3); ctx.stroke();
+            // Label — show above separator
+            if (hx > left+16 && hx < right-16) {
+              const hh = h%12||12, ap = h>=12?'p':'a';
+              ctx.fillText(hh+ap, hx, SEP_Y-6);
+            }
+          }
+        }
+        hT = new Date(hT.getTime() + 3600000);
+      }
+
       // ── "Insulin" label inside the lane (not outside where it clips) ────
       ctx.fillStyle = 'rgba(200,195,215,0.45)';
       ctx.font = '600 9px -apple-system,sans-serif';
@@ -786,9 +813,9 @@ function renderTraceChart() {
           const my = chart.scales.y.getPixelForValue(Math.min(Math.max(near.v,40),230));
           const carbTxt = (m.carbs||0) > 0 ? m.carbs+'g' : 'meal';
           ctx.save();
-          // Vertical line through full glucose area
+          // Vertical line from badge down to glucose dot only
           ctx.strokeStyle='rgba(244,114,182,0.6)';ctx.lineWidth=1.5;
-          ctx.beginPath();ctx.moveTo(mx,top);ctx.lineTo(mx,SEP_Y);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(mx,py+PH);ctx.lineTo(mx,my-5);ctx.stroke();
           // Carb badge — clamped within chart
           const PW=Math.max(28,carbTxt.length*6.5+10),PH=16;
           const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2),py=top+4;
