@@ -264,12 +264,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="insight-overnight" style="margin-top:8px"></div>
       </div>
       <div class="card">
-        <div class="card-title">Post-meal glucose response</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Avg glucose curve 2h before → 3h after each logged meal · requires meal data</div>
-        <div style="position:relative;width:100%;height:180px">
-          <canvas id="postmealCurveChart" role="img" aria-label="Post-meal response curve"></canvas>
-        </div>
-        <div id="postmeal-stats" style="margin-top:10px;font-size:13px"></div>
+        <div class="card-title">Meal response</div>
+        <div id="postmeal-stats"></div>
         <div id="insight-postmeal" style="margin-top:8px"></div>
       </div>
     </div>
@@ -1172,15 +1168,21 @@ function renderAGP(cgm, boluses, basals) {
       });
       if(st){ctx.lineTo(xOf(BINS-1),bottom);ctx.closePath();ctx.fill();}
 
-      // Avg basal line
-      ctx.strokeStyle='rgba(167,139,250,0.7)';ctx.lineWidth=1.5;
-      ctx.beginPath();st=false;
-      avgBasal.forEach((v,i)=>{
-        if(v==null){st=false;return;}
-        const bx=xOf(i),by=yR(v);
-        if(!st){ctx.moveTo(bx,by);st=true;}else ctx.lineTo(bx,by);
-      });
-      ctx.stroke();
+      // Avg basal line — smooth cubic bezier
+      ctx.strokeStyle='rgba(167,139,250,0.75)';ctx.lineWidth=1.5;
+      // Collect non-null points
+      const bPts=[];
+      avgBasal.forEach((v,i)=>{if(v!=null)bPts.push({x:xOf(i),y:yR(v)});});
+      if(bPts.length>1){
+        ctx.beginPath();ctx.moveTo(bPts[0].x,bPts[0].y);
+        for(let i=1;i<bPts.length;i++){
+          const prev=bPts[i-1],cur=bPts[i];
+          const cp1x=prev.x+(cur.x-prev.x)*0.4,cp1y=prev.y;
+          const cp2x=prev.x+(cur.x-prev.x)*0.6,cp2y=cur.y;
+          ctx.bezierCurveTo(cp1x,cp1y,cp2x,cp2y,cur.x,cur.y);
+        }
+        ctx.stroke();
+      }
 
       // Avg bolus bars
       avgBolus.forEach((v,i)=>{
@@ -1220,10 +1222,14 @@ function renderAGP(cgm, boluses, basals) {
       { label:'_p75', type:'line', data: xArr.map((i)=>({x:i,y:p75[i]})),
         borderWidth:0, pointRadius:0, fill:false,
         backgroundColor:'rgba(0,212,160,0.18)', tension:0.3, spanGaps:true, datalabels:{display:false} },
-      // Median
+      // Median — colored by range
       { label:'Median', type:'line', data: xArr.map((i)=>({x:i,y:p50[i]})),
         borderColor:'#00d4a0', borderWidth:2.5, pointRadius:0,
-        fill:false, tension:0.3, spanGaps:true, datalabels:{display:false} },
+        fill:false, tension:0.3, spanGaps:true, datalabels:{display:false},
+        segment:{borderColor:ctx=>{
+          const v=ctx.p1.parsed.y;
+          return v==null?'#00d4a0':v<LOW?'#ff4d6d':v>HIGH_TIR?'#ffb347':'#00d4a0';
+        }}},
       // Target bands (dashed)
       { label:'_hi', type:'line', data: xArr.map(i=>({x:i,y:HIGH_TIR})),
         borderColor:'rgba(255,179,71,0.3)', borderWidth:1, borderDash:[5,5],
@@ -1232,7 +1238,24 @@ function renderAGP(cgm, boluses, basals) {
         borderColor:'rgba(255,77,109,0.3)', borderWidth:1, borderDash:[5,5],
         pointRadius:0, fill:false, datalabels:{display:false} },
     ]},
-    plugins: [insPlugin],
+    plugins: [insPlugin, {
+      id:'agpZones',
+      beforeDraw(chart){
+        const{ctx,chartArea:{left,right,top,bottom},scales:{y}}=chart;
+        ctx.save();
+        // Color zones: red below 70, amber above target
+        const zones=[
+          {min:0,max:LOW,c:'rgba(255,77,109,0.07)'},
+          {min:HIGH_TIR,max:250,c:'rgba(255,179,71,0.06)'},
+          {min:250,max:400,c:'rgba(226,75,74,0.08)'},
+        ];
+        zones.forEach(z=>{
+          const yT=Math.max(top,y.getPixelForValue(z.max)),yB=Math.min(bottom,y.getPixelForValue(z.min));
+          if(yB>yT){ctx.fillStyle=z.c;ctx.fillRect(left,yT,right-left,yB-yT);}
+        });
+        ctx.restore();
+      }
+    }],
     options: {
       responsive:true, maintainAspectRatio:false,
       animation:{ duration:300 },
@@ -1867,7 +1890,6 @@ function renderSensitivityChart(boluses,basals){
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
   const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*1000)/1000);
 
-  // Single day
   if(labels.length<=1&&wrap){
     const val=tddKgData[0]||0;
     const col=val<=0.4?'#00d4a0':val<=0.6?'#ffb347':'#ff4d6d';
@@ -1882,82 +1904,133 @@ function renderSensitivityChart(boluses,basals){
     wrap.innerHTML='<canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend" style="width:100%;height:100%"></canvas>';
   }
 
-  // 7-day rolling
-  const rolling7=tddKgData.map((_,i)=>{const w=tddKgData.slice(Math.max(0,i-6),i+1);return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;});
+  const rolling7=tddKgData.map((_,i)=>{
+    const w=tddKgData.slice(Math.max(0,i-6),i+1);
+    return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;
+  });
 
-  // Min/max for zone shading
-  const allVals=[...tddKgData,...rolling7].filter(Boolean);
+  const allVals=[...tddKgData].filter(Boolean);
   const yMin=Math.max(0,Math.min(...allVals)-0.05);
-  const yMax=Math.max(...allVals)+0.05;
+  const yMax=Math.max(...allVals)+0.07;
   const grid='rgba(255,255,255,0.05)';
 
-  // Color zone plugin
+  // Color-zone background plugin
   const zonePlugin={
     id:'zones',
     beforeDraw(chart){
       const{ctx,chartArea:{left,right,top,bottom},scales:{y}}=chart;
       ctx.save();
-      const zones=[
-        {min:0,max:0.4,color:'rgba(0,212,160,0.05)',label:'Low demand'},
-        {min:0.4,max:0.6,color:'rgba(255,179,71,0.05)',label:'Typical'},
-        {min:0.6,max:99,color:'rgba(255,77,109,0.05)',label:'High demand'},
-      ];
-      zones.forEach(z=>{
-        const y1=y.getPixelForValue(z.max);
-        const y2=y.getPixelForValue(z.min);
-        ctx.fillStyle=z.color;
-        ctx.fillRect(left,Math.max(top,y1),right-left,Math.min(bottom,y2)-Math.max(top,y1));
+      [{min:0,max:0.4,c:'rgba(0,212,160,0.06)'},{min:0.4,max:0.6,c:'rgba(255,179,71,0.06)'},{min:0.6,max:99,c:'rgba(255,77,109,0.06)'}]
+      .forEach(z=>{
+        const yT=Math.max(top,y.getPixelForValue(z.max)),yB=Math.min(bottom,y.getPixelForValue(z.min));
+        if(yB>yT){ctx.fillStyle=z.c;ctx.fillRect(left,yT,right-left,yB-yT);}
       });
-      // Zone boundary lines
       [0.4,0.6].forEach(v=>{
         const py=y.getPixelForValue(v);
-        if(py<top||py>bottom) return;
-        ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+        if(py<top||py>bottom)return;
+        ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
         ctx.beginPath();ctx.moveTo(left,py);ctx.lineTo(right,py);ctx.stroke();
         ctx.setLineDash([]);
+        ctx.fillStyle='rgba(180,175,200,0.4)';ctx.font='500 9px -apple-system,sans-serif';
+        ctx.textAlign='right';ctx.fillText(v.toFixed(1),left-4,py+3);
       });
       ctx.restore();
     }
   };
 
-  // Dot color per day value
-  const dotColors=tddKgData.map(v=>v<=0.4?'rgba(0,212,160,0.7)':v<=0.6?'rgba(255,179,71,0.7)':'rgba(255,77,109,0.7)');
+  // Crosshair plugin for sensitivity chart
+  const crossPlugin={
+    id:'sensCross',
+    afterDraw(chart){
+      const active=chart.tooltip?._active?.[0];
+      if(!active)return;
+      const{ctx,chartArea:{top,bottom}}=chart;
+      const cx=active.element.x,cy=active.element.y;
+      ctx.save();
+      ctx.strokeStyle='rgba(255,255,255,0.18)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.moveTo(cx,top);ctx.lineTo(cx,bottom);ctx.stroke();
+      ctx.setLineDash([]);
+      // Dot on the 7d line at the same x
+      const idx=active.index;
+      const r7=rolling7[idx];
+      if(r7!=null){
+        const r7Meta=chart.getDatasetMeta(1);
+        const r7Pt=r7Meta?.data?.[idx];
+        if(r7Pt){
+          ctx.fillStyle='#00d4a0';ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.arc(r7Pt.x,r7Pt.y,4,0,Math.PI*2);ctx.fill();ctx.stroke();
+        }
+      }
+      // Dot on the daily value
+      ctx.fillStyle=tddKgData[idx]<=0.4?'#00d4a0':tddKgData[idx]<=0.6?'#ffb347':'#ff4d6d';
+      ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  // Single line dataset for daily — colored point backgrounds per value
+  const ptColors=tddKgData.map(v=>v<=0.4?'rgba(0,212,160,0.85)':v<=0.6?'rgba(255,179,71,0.85)':'rgba(255,77,109,0.85)');
+  const ptBorder=tddKgData.map(v=>v<=0.4?'rgba(0,212,160,0.4)':v<=0.6?'rgba(255,179,71,0.4)':'rgba(255,77,109,0.4)');
 
   sensitivityChart=new Chart(document.getElementById('sensitivityChart'),{
     type:'line',
     data:{labels,datasets:[
+      // Daily — line connecting dots, dots colored by zone
       {label:'Daily',data:tddKgData,
-        borderColor:'transparent',borderWidth:0,
+        borderColor:'rgba(180,175,200,0.2)',borderWidth:1,
         pointRadius:5,pointHoverRadius:7,
-        pointBackgroundColor:dotColors,
-        pointBorderColor:'rgba(0,0,0,0.3)',pointBorderWidth:1,
-        fill:false,datalabels:{display:false}},
+        pointBackgroundColor:ptColors,
+        pointBorderColor:ptBorder,pointBorderWidth:1.5,
+        tension:0.3,fill:false,datalabels:{display:false}},
+      // 7d rolling avg — smooth line, no dots until hover
       {label:'7d avg',data:rolling7,
-        borderColor:'rgba(0,212,160,0.9)',borderWidth:2,borderDash:[],
-        pointRadius:0,tension:0.4,fill:false,datalabels:{display:false}},
+        borderColor:'#00d4a0',borderWidth:2.5,
+        pointRadius:0,pointHoverRadius:0,
+        tension:0.4,fill:false,datalabels:{display:false}},
     ]},
-    plugins:[zonePlugin],
+    plugins:[zonePlugin,crossPlugin],
     options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},datalabels:{display:false},
-        tooltip:{callbacks:{
-          title:items=>items[0].label,
-          label:ctx=>{
-            if(ctx.dataset.label==='Daily'){
-              const v=ctx.parsed.y;
-              const zone=v<=0.4?'Low demand':v<=0.6?'Typical':'High demand';
-              return `${ctx.parsed.y} u/kg · ${zone}`;
-            }
-            return `7d avg: ${ctx.parsed.y} u/kg`;
+        tooltip:{
+          enabled:false,
+          external:ctx=>{
+            const{chart,tooltip}=ctx;
+            let el=document.getElementById('sens-tooltip');
+            if(!el){el=document.createElement('div');el.id='sens-tooltip';
+              el.style.cssText='position:fixed;background:rgba(12,12,20,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:9999;display:none;min-width:140px;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
+              document.body.appendChild(el);}
+            if(tooltip.opacity===0){el.style.display='none';return;}
+            const i=tooltip.dataPoints?.[0]?.dataIndex;
+            if(i==null){el.style.display='none';return;}
+            const val=tddKgData[i],avg=rolling7[i];
+            if(val==null){el.style.display='none';return;}
+            const col=val<=0.4?'#00d4a0':val<=0.6?'#ffb347':'#ff4d6d';
+            const zone=val<=0.4?'Low demand':val<=0.6?'Typical range':'High demand';
+            let html=`<div style="color:rgba(200,195,215,0.7);font-size:11px;margin-bottom:6px">${labels[i]}</div>`;
+            html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block"></span><span style="color:${col};font-weight:700">${val.toFixed(3)}</span><span style="color:rgba(180,175,200,0.5);font-size:10px">u/kg</span></div>`;
+            html+=`<div style="font-size:10px;color:${col};padding-left:16px;margin-bottom:3px">${zone}</div>`;
+            if(avg!=null) html+=`<div style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:2px;background:#00d4a0;display:inline-block;border-radius:1px"></span><span style="color:rgba(0,212,160,0.7);font-size:10px">7d avg: ${avg.toFixed(3)} u/kg</span></div>`;
+            el.innerHTML=html;el.style.display='block';
+            const r=chart.canvas.getBoundingClientRect();
+            const cp=tooltip.caretX,cy2=tooltip.caretY;
+            const tw=el.offsetWidth+16,th=el.offsetHeight+16;
+            let lx=r.left+cp+14,ly=r.top+cy2-th/2;
+            if(lx+tw>window.innerWidth)lx=r.left+cp-tw+2;
+            if(ly<4)ly=4;
+            el.style.left=lx+'px';el.style.top=ly+'px';
           }
-        }}
+        }
       },
       scales:{
         x:{ticks:{maxTicksLimit:8,color:'#505058',font:{size:10},maxRotation:0},grid:{color:grid}},
-        y:{min:yMin,max:yMax,
-          ticks:{color:'#505058',font:{size:10},callback:v=>v.toFixed(2)},
-          grid:{color:grid}}
+        y:{min:yMin,max:yMax,ticks:{color:'#505058',font:{size:10},callback:v=>v.toFixed(2)},grid:{color:grid}}
       }}
+  });
+  document.getElementById('sensitivityChart')?.addEventListener('mouseleave',()=>{
+    const el=document.getElementById('sens-tooltip');if(el)el.style.display='none';
   });
 }
 
@@ -2227,4 +2300,120 @@ async function exportPDF(){
 loadFromOneDrive();
 </script>
 </body>
-</html>
+</html>// ── MEAL RESPONSE STATS ─────────────────────────────────────────────────────
+let postmealCurveChart = null; // kept for compat, not used
+function renderPostMealCurve(cgm, meals, boluses) {
+  if(postmealCurveChart){postmealCurveChart.destroy();postmealCurveChart=null;}
+  const statsEl = document.getElementById('postmeal-stats');
+  if(!statsEl) return;
+  if(!meals||!meals.length){
+    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No meal data in selected range.</div>';
+    return;
+  }
+
+  const BEFORE=120,AFTER=180,STEP=5;
+  const glucBuckets={};
+  for(let m=-BEFORE;m<=AFTER;m+=STEP) glucBuckets[m]=[];
+  let mealCount=0;
+
+  meals.forEach(meal=>{
+    const mT=meal.t.getTime();
+    const nearby=cgm.filter(d=>Math.abs(d.t.getTime()-mT)<=(BEFORE+AFTER)*60000);
+    if(nearby.length<5) return;
+    mealCount++;
+    for(let min=-BEFORE;min<=AFTER;min+=STEP){
+      const target=mT+min*60000;
+      const near=nearby.reduce((b,d)=>Math.abs(d.t.getTime()-target)<Math.abs(b.t.getTime()-target)?d:b,nearby[0]);
+      if(Math.abs(near.t.getTime()-target)<8*60000) glucBuckets[min].push(near.v);
+    }
+  });
+
+  if(!mealCount){
+    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">Not enough CGM data around meal times.</div>';
+    return;
+  }
+
+  const labels=Object.keys(glucBuckets).map(Number).sort((a,b)=>a-b);
+  const avg=m=>glucBuckets[m].length?Math.round(glucBuckets[m].reduce((a,b)=>a+b,0)/glucBuckets[m].length):null;
+  const avgCurve=labels.map(avg);
+
+  const baseVals=labels.filter(m=>m>=-30&&m<=0).map(m=>avg(m)).filter(v=>v!=null);
+  const baseline=baseVals.length?Math.round(baseVals.reduce((a,b)=>a+b,0)/baseVals.length):null;
+  const postVals=avgCurve.filter((v,i)=>v!=null&&labels[i]>0);
+  const postPeak=postVals.length?Math.max(...postVals):null;
+  const peakIdx=postPeak?avgCurve.indexOf(postPeak):-1;
+  const peakMin=peakIdx>=0?labels[peakIdx]:null;
+  const delta=baseline&&postPeak?postPeak-baseline:null;
+
+  // Return-to-baseline: first point after peak where avg <= baseline+10
+  let returnMin=null;
+  if(peakIdx>0&&baseline){
+    const tail=avgCurve.slice(peakIdx);
+    const ri=tail.findIndex(v=>v!=null&&v<=baseline+10);
+    if(ri>=0) returnMin=labels[peakIdx+ri];
+  }
+
+  // Near-meal boluses
+  const bolusNearMeal=boluses?boluses.filter(b=>meals.some(m=>Math.abs(b.t-m.t)<30*60000)):[];
+  const avgMealBolus=bolusNearMeal.length?Math.round(bolusNearMeal.reduce((s,b)=>s+b.units,0)/mealCount*10)/10:null;
+
+  // Time in range during post-meal window (0–180 min)
+  const HIGH_TIR=tirMode==='tight'?140:HIGH;
+  const postMealVals=labels.filter(m=>m>=0&&m<=180).map(avg).filter(v=>v!=null);
+  const pmTIR=postMealVals.length?Math.round(postMealVals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/postMealVals.length*100):null;
+
+  // ICR estimate (carbs ÷ bolus)
+  const mealsWithBoth=meals.filter(m=>m.carbs>0&&bolusNearMeal.find(b=>Math.abs(b.t-m.t)<30*60000));
+  let avgICR=null;
+  if(mealsWithBoth.length){
+    const icrs=mealsWithBoth.map(m=>{
+      const b=bolusNearMeal.find(bl=>Math.abs(bl.t-m.t)<30*60000);
+      return b&&b.units>0?Math.round(m.carbs/b.units):null;
+    }).filter(v=>v!=null);
+    if(icrs.length) avgICR=Math.round(icrs.reduce((a,b)=>a+b,0)/icrs.length);
+  }
+
+  const peakCol=postPeak?(postPeak>HIGH_TIR?'#ffb347':postPeak>HIGH_TIR*0.8?'#00d4a0':'#00d4a0'):'#00d4a0';
+  const riseCol=delta?(delta>60?'#ff4d6d':delta>30?'#ffb347':'#00d4a0'):'#00d4a0';
+  const tirCol=pmTIR!=null?(pmTIR>=85?'#00d4a0':pmTIR>=70?'#ffb347':'#ff4d6d'):'var(--text)';
+
+  statsEl.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-top:4px">
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Meals</div>
+        <div style="font-size:24px;font-weight:700;color:var(--text)">${mealCount}</div>
+      </div>
+      ${baseline?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Pre-meal</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">${baseline}<span style="font-size:9px;color:var(--text3)"> mg</span></div>
+      </div>`:''}
+      ${postPeak?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Peak</div>
+        <div style="font-size:20px;font-weight:700;color:${peakCol}">${postPeak}<span style="font-size:9px;color:var(--text3)"> mg</span></div>
+      </div>`:''}
+      ${delta?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Rise</div>
+        <div style="font-size:20px;font-weight:700;color:${riseCol}">+${delta}<span style="font-size:9px;color:var(--text3)"> mg</span></div>
+      </div>`:''}
+      ${peakMin!=null?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Peak at</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">+${peakMin}<span style="font-size:9px;color:var(--text3)">m</span></div>
+      </div>`:''}
+      ${returnMin?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Returns</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">+${returnMin}<span style="font-size:9px;color:var(--text3)">m</span></div>
+      </div>`:''}
+      ${pmTIR!=null?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Post-meal TIR</div>
+        <div style="font-size:20px;font-weight:700;color:${tirCol}">${pmTIR}<span style="font-size:9px;color:var(--text3)">%</span></div>
+      </div>`:''}
+      ${avgMealBolus?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Avg bolus</div>
+        <div style="font-size:20px;font-weight:700;color:#60a5fa">${avgMealBolus}<span style="font-size:9px;color:var(--text3)">u</span></div>
+      </div>`:''}
+      ${avgICR?`<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Est. ICR</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">1:${avgICR}<span style="font-size:9px;color:var(--text3)"> g/u</span></div>
+      </div>`:''}
+    </div>`;
+}
