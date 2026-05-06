@@ -784,9 +784,11 @@ function renderTraceChart() {
       ctx.restore();
 
       // ── Meal markers (drawn AFTER restore — full chart area, not clipped) ───
+      // mealMarkersPost: use filteredMeals (already merged with carbsFromBolus in parseAndRender)
+      // Then add any bolus with carbs not already covered
       const mealMarkersPost = [...meals];
       boluses.forEach(b => {
-        if ((b.carbs||0) > 0 && !mealMarkersPost.find(m => Math.abs(m.t-b.t) < 60000))
+        if ((b.carbs||0) > 0 && !mealMarkersPost.find(m => Math.abs(m.t-b.t) < 30*60000))
           mealMarkersPost.push({t: b.t, carbs: b.carbs});
       });
       if (showMeals && mealMarkersPost.length) {
@@ -797,12 +799,17 @@ function renderTraceChart() {
           const my = chart.scales.y.getPixelForValue(Math.min(Math.max(near.v,40),230));
           const carbTxt = (m.carbs||0) > 0 ? m.carbs+'g' : 'meal';
           ctx.save();
-          // Declare badge dimensions first
+          // Badge sits just above the glucose dot, not at chart top
           const PW=Math.max(28,carbTxt.length*6.5+10),PH=16;
-          const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2),py=top+4;
-          // Vertical line from badge bottom down to glucose dot
-          ctx.strokeStyle='rgba(244,114,182,0.6)';ctx.lineWidth=1.5;
-          ctx.beginPath();ctx.moveTo(mx,py+PH);ctx.lineTo(mx,my-5);ctx.stroke();
+          // Position badge above dot, clamped so it doesn't go above chart top
+          const rawPy = my - PH - 8;
+          const py = Math.max(top + 2, rawPy);
+          const px=Math.min(Math.max(mx-PW/2,left+2),right-PW-2);
+          // Short line from badge bottom to dot
+          if(py+PH < my-4){
+            ctx.strokeStyle='rgba(244,114,182,0.5)';ctx.lineWidth=1;
+            ctx.beginPath();ctx.moveTo(mx,py+PH);ctx.lineTo(mx,my-5);ctx.stroke();
+          }
           // Carb badge
           ctx.fillStyle='rgba(15,5,20,0.92)';ctx.strokeStyle='rgba(244,114,182,0.8)';ctx.lineWidth=1.2;
           if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,PW,PH,4);ctx.fill();ctx.stroke();}
@@ -859,17 +866,29 @@ function renderTraceChart() {
         }
       }
 
+      // Bolus dot — blue circle at bolus bar height near cursor
+      const tsCursor = x.getValueForPixel(cxPx);
+      const nearBolus = boluses.filter(b => Math.abs(b.t.getTime()-tsCursor) < 5*60000);
+      if (nearBolus.length) {
+        const bolusSum = nearBolus.reduce((s,b)=>s+b.units,0);
+        const bDotY2 = yBolus(bolusSum);
+        if (bDotY2 >= SEP_Y && bDotY2 <= bottom) {
+          ctx.fillStyle   = '#60a5fa';
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+          ctx.lineWidth   = 2;
+          ctx.beginPath(); ctx.arc(cxPx, bDotY2, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+      }
+
       ctx.restore();
     }
   };
 
   // ── X-axis time labels plugin ─────────────────────────────────────────────
-  // Draws hour labels along the bottom edge of the glucose zone (just above insulin lane)
   const timePlugin = {
     id: 'time',
     afterDraw(chart) {
       const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
-      const H = bottom - top;
       const SEP_Y2 = top + (bottom-top)*0.78;
       const spanHrs = (xMax - xMin) / 3600000;
       const tickEvery = spanHrs <= 24 ? 1 : spanHrs <= 48 ? 2 : spanHrs <= 72 ? 3 : 6;
@@ -877,7 +896,6 @@ function renderTraceChart() {
       ctx.fillStyle = 'rgba(130,125,150,0.7)';
       ctx.font = '500 8px -apple-system,sans-serif';
       ctx.textAlign = 'center';
-      // Start from first full hour
       const startMs = Math.ceil(xMin / 3600000) * 3600000;
       for (let ts = startMs; ts <= xMax; ts += 3600000) {
         const d = new Date(ts);
@@ -891,21 +909,6 @@ function renderTraceChart() {
           : hh+ap;
         ctx.fillText(lbl, hx, SEP_Y2 - 3);
       }
-      // Bolus dot at cursor x — find nearest bolus within 5 min
-      const tsCursor = x.getValueForPixel(cxPx);
-      const nearBolus = boluses.filter(b => Math.abs(b.t.getTime()-tsCursor) < 5*60000);
-      if (nearBolus.length) {
-        const bolusSum = nearBolus.reduce((s,b)=>s+b.units,0);
-        // Draw blue dot at bolus bar top position in insulin lane
-        const bDotY2 = yBolus(bolusSum);
-        if (bDotY2 >= SEP_Y && bDotY2 <= bottom) {
-          ctx.fillStyle   = '#60a5fa';
-          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-          ctx.lineWidth   = 2;
-          ctx.beginPath(); ctx.arc(cxPx, bDotY2, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        }
-      }
-
       ctx.restore();
     }
   };
