@@ -1255,20 +1255,15 @@ function renderAGP(cgm, boluses, basals) {
 
   _tc = new Chart(document.getElementById('traceChart'), {
     data: { datasets: [
-      // 10-90 outer band — color-coded by position relative to range
+      // Band outlines only — plugin draws color-coded fills
       { label:'_p10', type:'line', data: xArr.map((i)=>({x:i,y:p10[i]})),
-        borderWidth:0, pointRadius:0, fill:'+1', tension:0.3, spanGaps:true, datalabels:{display:false},
-        backgroundColor:'rgba(0,212,160,0.07)' },
+        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false} },
       { label:'_p90', type:'line', data: xArr.map((i)=>({x:i,y:p90[i]})),
-        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false},
-        backgroundColor:'rgba(0,212,160,0.07)' },
-      // 25-75 IQR band
+        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false} },
       { label:'_p25', type:'line', data: xArr.map((i)=>({x:i,y:p25[i]})),
-        borderWidth:0, pointRadius:0, fill:'+1', tension:0.3, spanGaps:true, datalabels:{display:false},
-        backgroundColor:'rgba(0,212,160,0.16)' },
+        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false} },
       { label:'_p75', type:'line', data: xArr.map((i)=>({x:i,y:p75[i]})),
-        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false},
-        backgroundColor:'rgba(0,212,160,0.16)' },
+        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false} },
       // Median — colored by range
       { label:'Median', type:'line', data: xArr.map((i)=>({x:i,y:p50[i]})),
         borderColor:'#00d4a0', borderWidth:2.5, pointRadius:0,
@@ -1287,32 +1282,57 @@ function renderAGP(cgm, boluses, basals) {
     ]},
     plugins: [insPlugin, {
       id:'agpBandColor',
+      // Draw the percentile bands with zone-aware colors
+      // Strategy: for each x bin, draw vertical bar from p10 to p90 (outer) and p25 to p75 (inner)
+      // Color is determined by whether that glucose range is low / in-range / high
       afterDatasetsDraw(chart) {
         const {ctx, chartArea:{left,right,top,bottom}, scales:{y,x}} = chart;
-        // We overdraw the band fill with zone-specific colors using clipping
-        // Low zone: below 70 — paint band overlap red
-        // High zone: above HIGH_TIR — paint band overlap amber
-        const zones = [
-          {min:0,    max:LOW,      fill:'rgba(255,77,109,0.12)',  stroke:'rgba(255,77,109,0.3)'},
-          {min:HIGH_TIR, max:400,  fill:'rgba(255,179,71,0.10)', stroke:'rgba(255,179,71,0.25)'},
-        ];
         ctx.save();
-        zones.forEach(({min,max,fill,stroke})=>{
-          const yT=Math.max(top,  y.getPixelForValue(max));
-          const yB=Math.min(bottom,y.getPixelForValue(min));
-          if(yB<=yT) return;
-          // Clip to this horizontal zone
-          ctx.save();
-          ctx.beginPath();ctx.rect(left,yT,right-left,yB-yT);ctx.clip();
-          // Fill the zone band
-          ctx.fillStyle=fill;ctx.fillRect(left,yT,right-left,yB-yT);
-          // Dashed boundary
-          ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.setLineDash([4,4]);
-          const boundY=y.getPixelForValue(min===0?LOW:HIGH_TIR);
-          ctx.beginPath();ctx.moveTo(left,boundY);ctx.lineTo(right,boundY);ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.restore();
-        });
+
+        const clrLow   = (alpha) => `rgba(255,77,109,${alpha})`;   // red — below 70
+        const clrIn    = (alpha) => `rgba(0,212,160,${alpha})`;    // teal — in range
+        const clrHigh  = (alpha) => `rgba(255,179,71,${alpha})`;   // amber — above target
+
+        function glucColor(gVal, alpha) {
+          if (gVal < LOW) return clrLow(alpha);
+          if (gVal > HIGH_TIR) return clrHigh(alpha);
+          return clrIn(alpha);
+        }
+
+        // For each bin, draw a vertical rectangle split into colored zones
+        for (let i = 0; i < BINS; i++) {
+          if (p10[i]==null || p90[i]==null) continue;
+
+          const x1 = x.getPixelForValue(i - 0.5);
+          const x2 = x.getPixelForValue(i + 0.5);
+          const bw  = Math.max(1, x2 - x1);
+          const bx  = x.getPixelForValue(i) - bw/2;
+
+          // Draw outer band (p10–p90) and inner band (p25–p75)
+          // Split each band at glucose boundaries (LOW and HIGH_TIR)
+          const outerMin = Math.min(p10[i], p90[i]);
+          const outerMax = Math.max(p10[i], p90[i]);
+          const innerMin = p25[i] != null ? Math.min(p25[i], p75[i]) : outerMin;
+          const innerMax = p25[i] != null ? Math.max(p25[i], p75[i]) : outerMax;
+
+          // Draw outer band first (lower opacity), then inner (higher opacity)
+          [[outerMin, outerMax, 0.09], [innerMin, innerMax, 0.20]].forEach(([gMin, gMax, alpha]) => {
+            // Split at LOW and HIGH_TIR boundaries
+            const boundaries = [gMin, LOW, HIGH_TIR, gMax].filter(v => v >= gMin && v <= gMax);
+            const sorted = [...new Set(boundaries)].sort((a,b)=>a-b);
+            for (let s = 0; s < sorted.length - 1; s++) {
+              const segLo = sorted[s], segHi = sorted[s+1];
+              if (segHi <= segLo) continue;
+              const midVal = (segLo + segHi) / 2;
+              const py1 = Math.min(bottom, Math.max(top, y.getPixelForValue(segHi)));
+              const py2 = Math.min(bottom, Math.max(top, y.getPixelForValue(segLo)));
+              if (py2 <= py1) continue;
+              ctx.fillStyle = glucColor(midVal, alpha);
+              ctx.fillRect(bx, py1, bw, py2 - py1);
+            }
+          });
+        }
+
         ctx.restore();
       }
     }],
