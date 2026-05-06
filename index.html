@@ -265,6 +265,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
       <div class="card">
         <div class="card-title">Meal response</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:10px">Avg glucose -2h to +3h around logged meals</div>
+        <div style="position:relative;width:100%;height:110px;margin-bottom:12px">
+          <canvas id="mealSparkline"></canvas>
+        </div>
         <div id="postmeal-stats"></div>
         <div id="insight-postmeal" style="margin-top:8px"></div>
       </div>
@@ -293,7 +297,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div id="sensitivity-wrap" style="position:relative;width:100%;height:160px">
         <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Teal = daily · dashed = 7-day rolling avg · lower = improving sensitivity</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Dots = daily · teal line = 30-day rolling avg · lower = improving sensitivity · green &lt;0.4 · amber 0.4–0.6 · red &gt;0.6</div>
       <div id="insight-sensitivity" style="margin-top:10px"></div>
     </div>
 
@@ -887,6 +891,21 @@ function renderTraceChart() {
           : hh+ap;
         ctx.fillText(lbl, hx, SEP_Y2 - 3);
       }
+      // Bolus dot at cursor x — find nearest bolus within 5 min
+      const tsCursor = x.getValueForPixel(cxPx);
+      const nearBolus = boluses.filter(b => Math.abs(b.t.getTime()-tsCursor) < 5*60000);
+      if (nearBolus.length) {
+        const bolusSum = nearBolus.reduce((s,b)=>s+b.units,0);
+        // Draw blue dot at bolus bar top position in insulin lane
+        const bDotY2 = yBolus(bolusSum);
+        if (bDotY2 >= SEP_Y && bDotY2 <= bottom) {
+          ctx.fillStyle   = '#60a5fa';
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+          ctx.lineWidth   = 2;
+          ctx.beginPath(); ctx.arc(cxPx, bDotY2, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+      }
+
       ctx.restore();
     }
   };
@@ -1233,20 +1252,20 @@ function renderAGP(cgm, boluses, basals) {
 
   _tc = new Chart(document.getElementById('traceChart'), {
     data: { datasets: [
-      // 10-90 band
+      // 10-90 outer band — color-coded by position relative to range
       { label:'_p10', type:'line', data: xArr.map((i)=>({x:i,y:p10[i]})),
-        borderWidth:0, pointRadius:0, fill:'+1',
-        backgroundColor:'rgba(0,212,160,0.08)', tension:0.3, spanGaps:true, datalabels:{display:false} },
+        borderWidth:0, pointRadius:0, fill:'+1', tension:0.3, spanGaps:true, datalabels:{display:false},
+        backgroundColor:'rgba(0,212,160,0.07)' },
       { label:'_p90', type:'line', data: xArr.map((i)=>({x:i,y:p90[i]})),
-        borderWidth:0, pointRadius:0, fill:false,
-        backgroundColor:'rgba(0,212,160,0.08)', tension:0.3, spanGaps:true, datalabels:{display:false} },
+        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false},
+        backgroundColor:'rgba(0,212,160,0.07)' },
       // 25-75 IQR band
       { label:'_p25', type:'line', data: xArr.map((i)=>({x:i,y:p25[i]})),
-        borderWidth:0, pointRadius:0, fill:'+1',
-        backgroundColor:'rgba(0,212,160,0.18)', tension:0.3, spanGaps:true, datalabels:{display:false} },
+        borderWidth:0, pointRadius:0, fill:'+1', tension:0.3, spanGaps:true, datalabels:{display:false},
+        backgroundColor:'rgba(0,212,160,0.16)' },
       { label:'_p75', type:'line', data: xArr.map((i)=>({x:i,y:p75[i]})),
-        borderWidth:0, pointRadius:0, fill:false,
-        backgroundColor:'rgba(0,212,160,0.18)', tension:0.3, spanGaps:true, datalabels:{display:false} },
+        borderWidth:0, pointRadius:0, fill:false, tension:0.3, spanGaps:true, datalabels:{display:false},
+        backgroundColor:'rgba(0,212,160,0.16)' },
       // Median — colored by range
       { label:'Median', type:'line', data: xArr.map((i)=>({x:i,y:p50[i]})),
         borderColor:'#00d4a0', borderWidth:2.5, pointRadius:0,
@@ -1263,7 +1282,37 @@ function renderAGP(cgm, boluses, basals) {
         borderColor:'rgba(255,77,109,0.3)', borderWidth:1, borderDash:[5,5],
         pointRadius:0, fill:false, datalabels:{display:false} },
     ]},
-    plugins: [insPlugin],
+    plugins: [insPlugin, {
+      id:'agpBandColor',
+      afterDatasetsDraw(chart) {
+        const {ctx, chartArea:{left,right,top,bottom}, scales:{y,x}} = chart;
+        // We overdraw the band fill with zone-specific colors using clipping
+        // Low zone: below 70 — paint band overlap red
+        // High zone: above HIGH_TIR — paint band overlap amber
+        const zones = [
+          {min:0,    max:LOW,      fill:'rgba(255,77,109,0.12)',  stroke:'rgba(255,77,109,0.3)'},
+          {min:HIGH_TIR, max:400,  fill:'rgba(255,179,71,0.10)', stroke:'rgba(255,179,71,0.25)'},
+        ];
+        ctx.save();
+        zones.forEach(({min,max,fill,stroke})=>{
+          const yT=Math.max(top,  y.getPixelForValue(max));
+          const yB=Math.min(bottom,y.getPixelForValue(min));
+          if(yB<=yT) return;
+          // Clip to this horizontal zone
+          ctx.save();
+          ctx.beginPath();ctx.rect(left,yT,right-left,yB-yT);ctx.clip();
+          // Fill the zone band
+          ctx.fillStyle=fill;ctx.fillRect(left,yT,right-left,yB-yT);
+          // Dashed boundary
+          ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+          const boundY=y.getPixelForValue(min===0?LOW:HIGH_TIR);
+          ctx.beginPath();ctx.moveTo(left,boundY);ctx.lineTo(right,boundY);ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        });
+        ctx.restore();
+      }
+    }],
     options: {
       responsive:true, maintainAspectRatio:false,
       animation:{ duration:300 },
@@ -1913,7 +1962,7 @@ function renderSensitivityChart(boluses,basals){
   }
 
   const rolling7=tddKgData.map((_,i)=>{
-    const w=tddKgData.slice(Math.max(0,i-6),i+1);
+    const w=tddKgData.slice(Math.max(0,i-29),i+1);
     return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;
   });
 
@@ -1992,7 +2041,7 @@ function renderSensitivityChart(boluses,basals){
         pointBorderColor:ptBorder,pointBorderWidth:1.5,
         tension:0,fill:false,datalabels:{display:false}},
       // 7d rolling avg — smooth line, no dots until hover
-      {label:'7d avg',data:rolling7,
+      {label:'30d avg',data:rolling7,
         borderColor:'#00d4a0',borderWidth:2.5,
         pointRadius:0,pointHoverRadius:0,
         tension:0.4,fill:false,datalabels:{display:false}},
@@ -2020,7 +2069,7 @@ function renderSensitivityChart(boluses,basals){
             let html=`<div style="color:rgba(200,195,215,0.7);font-size:11px;margin-bottom:6px">${labels[i]}</div>`;
             html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block"></span><span style="color:${col};font-weight:700">${val.toFixed(3)}</span><span style="color:rgba(180,175,200,0.5);font-size:10px">u/kg</span></div>`;
             html+=`<div style="font-size:10px;color:${col};padding-left:16px;margin-bottom:3px">${zone}</div>`;
-            if(avg!=null) html+=`<div style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:2px;background:#00d4a0;display:inline-block;border-radius:1px"></span><span style="color:rgba(0,212,160,0.7);font-size:10px">7d avg: ${avg.toFixed(3)} u/kg</span></div>`;
+            if(avg!=null) html+=`<div style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:2px;background:#00d4a0;display:inline-block;border-radius:1px"></span><span style="color:rgba(0,212,160,0.7);font-size:10px">30d avg: ${avg.toFixed(3)} u/kg</span></div>`;
             el.innerHTML=html;el.style.display='block';
             const r=chart.canvas.getBoundingClientRect();
             const cp=tooltip.caretX,cy2=tooltip.caretY;
@@ -2130,20 +2179,21 @@ function renderInsights(cgm,boluses,basals){
 }
 
 
-// ── MEAL RESPONSE STATS ─────────────────────────────────────────────────────
+// ── MEAL RESPONSE ────────────────────────────────────────────────────────────
 let postmealCurveChart = null;
 function renderPostMealCurve(cgm, meals, boluses) {
   if(postmealCurveChart){postmealCurveChart.destroy();postmealCurveChart=null;}
   const statsEl = document.getElementById('postmeal-stats');
-  if(!statsEl) return;
+  const sparkCanvas = document.getElementById('mealSparkline');
+
   if(!meals||!meals.length){
-    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No meal data in selected range.</div>';
+    if(statsEl) statsEl.innerHTML='<div style="font-size:12px;color:var(--text3)">No meal data in selected range.</div>';
     return;
   }
 
-  const BEFORE=120,AFTER=180,STEP=5;
-  const glucBuckets={};
-  for(let m=-BEFORE;m<=AFTER;m+=STEP) glucBuckets[m]=[];
+  const BEFORE=120, AFTER=180, STEP=5;
+  const glucBuckets={}, bolusBuckets={};
+  for(let m=-BEFORE;m<=AFTER;m+=STEP){glucBuckets[m]=[];bolusBuckets[m]=[];}
   let mealCount=0;
 
   meals.forEach(meal=>{
@@ -2156,18 +2206,23 @@ function renderPostMealCurve(cgm, meals, boluses) {
       const near=nearby.reduce((b,d)=>Math.abs(d.t.getTime()-target)<Math.abs(b.t.getTime()-target)?d:b,nearby[0]);
       if(Math.abs(near.t.getTime()-target)<8*60000) glucBuckets[min].push(near.v);
     }
+    if(boluses) boluses.filter(b=>b.units>=0.5).forEach(b=>{
+      const offset=Math.round((b.t.getTime()-mT)/60000/STEP)*STEP;
+      if(bolusBuckets[offset]!==undefined) bolusBuckets[offset].push(b.units);
+    });
   });
 
   if(!mealCount){
-    statsEl.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">Not enough CGM data around meal times.</div>';
+    if(statsEl) statsEl.innerHTML='<div style="font-size:12px;color:var(--text3)">Not enough CGM data around meal times.</div>';
     return;
   }
 
   const labels=Object.keys(glucBuckets).map(Number).sort((a,b)=>a-b);
   const avgFn=m=>glucBuckets[m]&&glucBuckets[m].length?Math.round(glucBuckets[m].reduce((a,b)=>a+b,0)/glucBuckets[m].length):null;
   const avgCurve=labels.map(avgFn);
+  const avgBolus=labels.map(m=>bolusBuckets[m]&&bolusBuckets[m].length?Math.round(bolusBuckets[m].reduce((a,b)=>a+b,0)/mealCount*10)/10:null);
 
-  const baseVals=labels.filter(m=>m>=-30&&m<=0).map(m=>avgFn(m)).filter(v=>v!=null);
+  const baseVals=labels.filter(m=>m>=-30&&m<=0).map(avgFn).filter(v=>v!=null);
   const baseline=baseVals.length?Math.round(baseVals.reduce((a,b)=>a+b,0)/baseVals.length):null;
   const postVals=avgCurve.filter((v,i)=>v!=null&&labels[i]>0);
   const postPeak=postVals.length?Math.max(...postVals):null;
@@ -2187,7 +2242,6 @@ function renderPostMealCurve(cgm, meals, boluses) {
   const HIGH_TIR=tirMode==='tight'?140:HIGH;
   const postMealVals=labels.filter(m=>m>=0&&m<=180).map(avgFn).filter(v=>v!=null);
   const pmTIR=postMealVals.length?Math.round(postMealVals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/postMealVals.length*100):null;
-
   const mealsWithBoth=meals.filter(m=>m.carbs>0&&bolusNearMeal.find(b=>Math.abs(b.t-m.t)<30*60000));
   let avgICR=null;
   if(mealsWithBoth.length){
@@ -2195,30 +2249,79 @@ function renderPostMealCurve(cgm, meals, boluses) {
     if(icrs.length) avgICR=Math.round(icrs.reduce((a,b)=>a+b,0)/icrs.length);
   }
 
-  function statCard(label, value, unit, color) {
-    return '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">'
-      + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">' + label + '</div>'
-      + '<div style="font-size:22px;font-weight:700;color:' + (color||'var(--text)') + ';line-height:1.1">' + value
-      + (unit ? '<span style="font-size:9px;color:var(--text3);margin-left:2px">' + unit + '</span>' : '')
-      + '</div></div>';
+  // ── Sparkline ──────────────────────────────────────────────────────────────
+  if(sparkCanvas){
+    const xLabels=labels.map(m=>m===0?'Meal':(m>0?'+'+m+'m':m+'m'));
+    const mealIdx=xLabels.indexOf('Meal');
+    const grid='rgba(255,255,255,0.05)';
+    const allVals=avgCurve.filter(v=>v!=null);
+    const yMin=Math.max(40,Math.min(...allVals)-10);
+    const yMax=Math.min(300,Math.max(...allVals)+15);
+
+    const mealLinePlugin={id:'mealLine',afterDraw(chart){
+      if(mealIdx<0)return;
+      const{ctx,chartArea:{top,bottom},scales:{x}}=chart;
+      const xp=x.getPixelForValue(mealIdx);
+      ctx.save();ctx.strokeStyle='rgba(244,114,182,0.6)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(xp,top);ctx.lineTo(xp,bottom);ctx.stroke();ctx.restore();
+    }};
+
+    postmealCurveChart=new Chart(sparkCanvas,{
+      type:'bar',
+      data:{labels:xLabels,datasets:[
+        {type:'bar',label:'Bolus',data:avgBolus,
+          backgroundColor:'rgba(96,165,250,0.55)',borderColor:'rgba(96,165,250,0.8)',
+          borderWidth:1,borderRadius:2,yAxisID:'yB',barThickness:6,
+          datalabels:{display:false}},
+        {type:'line',label:'Avg glucose',data:avgCurve,
+          borderColor:'#f472b6',borderWidth:2,pointRadius:0,tension:0.3,fill:false,
+          yAxisID:'y',datalabels:{display:false},
+          segment:{borderColor:ctx=>{const v=ctx.p1.parsed.y;return v==null?'#f472b6':v<LOW?'#ff4d6d':v>HIGH_TIR?'#ffb347':'#f472b6';}}},
+        {type:'line',label:'_hi',data:labels.map(()=>HIGH_TIR),
+          borderColor:'rgba(255,179,71,0.2)',borderWidth:1,borderDash:[4,4],
+          pointRadius:0,fill:false,yAxisID:'y',datalabels:{display:false}},
+        {type:'line',label:'_lo',data:labels.map(()=>LOW),
+          borderColor:'rgba(255,77,109,0.2)',borderWidth:1,borderDash:[4,4],
+          pointRadius:0,fill:false,yAxisID:'y',datalabels:{display:false}},
+      ]},
+      plugins:[mealLinePlugin],
+      options:{responsive:true,maintainAspectRatio:false,
+        animation:{duration:0},
+        plugins:{legend:{display:false},datalabels:{display:false},tooltip:{enabled:false}},
+        scales:{
+          x:{ticks:{color:'#505058',font:{size:8},maxTicksLimit:10,maxRotation:0},grid:{color:grid}},
+          y:{position:'left',min:yMin,max:yMax,ticks:{color:'#505058',font:{size:9}},grid:{color:grid}},
+          yB:{position:'right',min:0,max:Math.max(...avgBolus.filter(v=>v!=null),0.5)*3,
+            ticks:{display:false},grid:{display:false}}
+        }}
+    });
   }
 
+  // ── Stat cards ─────────────────────────────────────────────────────────────
+  if(!statsEl) return;
+  function sc(label,value,unit,color){
+    return '<div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">'
+      +'<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">'+label+'</div>'
+      +'<div style="font-size:20px;font-weight:700;color:'+(color||'var(--text)')+';line-height:1.1">'+value
+      +(unit?'<span style="font-size:9px;color:var(--text3);margin-left:2px">'+unit+'</span>':'')+'</div></div>';
+  }
   const peakCol=postPeak?(postPeak>HIGH_TIR?'#ffb347':'#00d4a0'):'var(--text)';
   const riseCol=delta?(delta>60?'#ff4d6d':delta>30?'#ffb347':'#00d4a0'):'var(--text)';
   const tirCol=pmTIR!=null?(pmTIR>=85?'#00d4a0':pmTIR>=70?'#ffb347':'#ff4d6d'):'var(--text)';
 
-  let cards=statCard('Meals',mealCount,'','var(--text)');
-  if(baseline)      cards+=statCard('Pre-meal',baseline,'mg','var(--text)');
-  if(postPeak)      cards+=statCard('Peak',postPeak,'mg',peakCol);
-  if(delta)         cards+=statCard('Rise','+'+delta,'mg',riseCol);
-  if(peakMin!=null) cards+=statCard('Peak at','+'+peakMin,'m','var(--text)');
-  if(returnMin)     cards+=statCard('Returns','+'+returnMin,'m','var(--text)');
-  if(pmTIR!=null)   cards+=statCard('Post-meal TIR',pmTIR,'%',tirCol);
-  if(avgMealBolus)  cards+=statCard('Avg bolus',avgMealBolus,'u','#60a5fa');
-  if(avgICR)        cards+=statCard('Est. ICR','1:'+avgICR,'g/u','var(--text)');
+  let cards=sc('Meals',mealCount,'','var(--text)');
+  if(baseline)      cards+=sc('Pre-meal',baseline,'mg','var(--text)');
+  if(postPeak)      cards+=sc('Peak',postPeak,'mg',peakCol);
+  if(delta)         cards+=sc('Rise','+'+delta,'mg',riseCol);
+  if(peakMin!=null) cards+=sc('Peak at','+'+peakMin,'m','var(--text)');
+  if(returnMin)     cards+=sc('Returns','+'+returnMin,'m','var(--text)');
+  if(pmTIR!=null)   cards+=sc('Post-meal TIR',pmTIR,'%',tirCol);
+  if(avgMealBolus)  cards+=sc('Avg bolus',avgMealBolus,'u','#60a5fa');
+  if(avgICR)        cards+=sc('Est. ICR','1:'+avgICR,'g/u','var(--text)');
 
-  statsEl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-top:4px">'+cards+'</div>';
+  statsEl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:6px">'+cards+'</div>';
 }
+
 
 // ── GLUCOSE HISTOGRAM ──────────────────────────────────────────────────────
 
