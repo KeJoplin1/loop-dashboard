@@ -227,7 +227,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="card">
         <div class="card-title" id="tir-card-title">Time in range (70–180 mg/dL)</div>
         <div id="tir-display"></div>
-        <div id="insight-tir" style="margin-top:10px"></div>
       </div>
       <div class="card">
         <div class="card-title">Glucose &amp; events by 3-hour block</div>
@@ -249,9 +248,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
           <canvas id="hourlyLowChart" style="display:none"></canvas>
           <canvas id="hourlyHighChart" style="display:none"></canvas>
         </div>
-        <div id="insight-hourly" style="margin-top:8px"></div>
-        <div id="insight-low-block" style="margin-top:4px"></div>
-        <div id="insight-high-block" style="margin-top:4px"></div>
       </div>
     </div>
 
@@ -261,23 +257,32 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="card">
         <div class="card-title">Overnight vs daytime</div>
         <div id="overnight-display" style="width:100%"></div>
-        <div id="insight-overnight" style="margin-top:8px"></div>
       </div>
       <div class="card">
+        <div class="card-title">Activity impact</div>
+        <div id="activity-display"></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
         <div class="card-title">Meal response</div>
-        <div style="font-size:10px;color:var(--text3);margin-bottom:10px">Avg glucose -2h to +3h around logged meals</div>
-        <div style="position:relative;width:100%;height:110px;margin-bottom:12px">
-          <canvas id="mealSparkline"></canvas>
-        </div>
+        <div style="position:relative;width:100%;height:120px;margin-bottom:10px"><canvas id="mealSparkline"></canvas></div>
         <div id="postmeal-stats"></div>
-        <div id="insight-postmeal" style="margin-top:8px"></div>
+      </div>
+
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Day of week breakdown</div>
       <div id="dow-display"></div>
-      <div id="insight-dow" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Loop suspension audit</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:10px">Daily basal suspension summary — total hours suspended vs glucose during each event</div>
+      <div id="suspension-display"></div>
     </div>
 
     <div class="card">
@@ -289,7 +294,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div id="tdd-chart-wrap" style="position:relative;width:100%;height:220px">
         <canvas id="tddChart" role="img" aria-label="Daily TDD"></canvas>
       </div>
-      <div id="insight-tdd" style="margin-top:10px"></div>
     </div>
 
     <div class="card">
@@ -298,7 +302,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend"></canvas>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:8px">Dots = daily · teal line = 30-day rolling avg · lower = improving sensitivity · green &lt;0.4 · amber 0.4–0.6 · red &gt;0.6</div>
-      <div id="insight-sensitivity" style="margin-top:10px"></div>
     </div>
 
 
@@ -554,8 +557,28 @@ function renderAll(){
   safe(()=>renderOvernightVsDaytime(filteredCGM),'renderOvernightVsDaytime');
   safe(()=>renderPostMealCurve(filteredCGM,filteredMeals,filteredBoluses),'renderPostMealCurve');
   safe(()=>renderDayOfWeek(filteredCGM,filteredBoluses,filteredBasals),'renderDayOfWeek');
+  safe(()=>renderActivityImpact(filteredCGM,filteredExercise),'renderActivityImpact');
+  safe(()=>renderSuspensionAudit(filteredCGM,filteredBasals),'renderSuspensionAudit');
   safe(()=>renderSensitivityChart(filteredBoluses,filteredBasals),'renderSensitivityChart');
-  safe(()=>renderInsights(filteredCGM,filteredBoluses,filteredBasals),'renderInsights');
+}
+
+function calcRiskScore(vals, HIGH_TIR) {
+  if(!vals||!vals.length) return 100;
+  const n = vals.length;
+  const l2  = vals.filter(v=>v<54).length/n*100;
+  const l1  = vals.filter(v=>v>=54&&v<70).length/n*100;
+  const tar = vals.filter(v=>v>HIGH_TIR).length/n*100;
+  const avg = vals.reduce((a,b)=>a+b,0)/n;
+  const sd  = Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/n);
+  const cv  = sd/avg*100;
+  // Penalty: higher = worse
+  const penalty = Math.min(100,
+    l2  * 2.5 +   // L2 hypo: max 40 pts at 16%
+    l1  * 1.0 +   // L1 hypo: max 25 pts at 25%
+    tar * 0.4 +   // TAR: max 20 pts at 50%
+    Math.max(0,cv-25)*0.5  // CV over 25: max 15 pts at 55%
+  );
+  return Math.round(100 - penalty);
 }
 
 function renderMetrics(cgm,boluses,basals){
@@ -566,7 +589,10 @@ function renderMetrics(cgm,boluses,basals){
   const sd=Math.round(Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/vals.length));
   const cv=Math.round(sd/avg*100);
   const gmi=Math.round((3.31+0.02392*avg)*100)/100;
-  const ea1c=Math.round((avg+46.7)/28.7*10)/10;
+  const riskScore = calcRiskScore(vals, HIGH_TIR);
+  const riskCol = riskScore>=85?'#00d4a0':riskScore>=70?'#ffb347':riskScore>=50?'#ff8c42':'#ff4d6d';
+  const riskLabel = riskScore>=85?'Low risk':riskScore>=70?'Moderate':riskScore>=50?'Elevated':'High risk';
+
   const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
   const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
   const uniqueDays=new Set([...boluses.map(b=>dayKey(b.t)),...basals.map(b=>dayKey(b.t))]).size;
@@ -593,7 +619,7 @@ function renderMetrics(cgm,boluses,basals){
   const tirCls=tir>=85?'good':tir>=70?'warn':'bad';
   const cvCls=cv<=25?'good':cv<=36?'warn':'bad';
   const gmiCls=gmi<6.5?'good':gmi<7?'warn':'bad';
-  const a1cCls=ea1c<6.5?'good':ea1c<7?'warn':'bad';
+
   document.getElementById('metrics-wrap').innerHTML=`
     <div class="metrics-section" style="flex:3">
       <div class="metrics-section-label gluc" style="display:flex;align-items:center;justify-content:space-between">
@@ -608,7 +634,13 @@ function renderMetrics(cgm,boluses,basals){
         <div class="metric-cell"><div class="metric-label">GMI</div><div class="metric-val ${gmiCls}">${gmi}<span class="unit">%</span></div></div>
         <div class="metric-cell"><div class="metric-label">TIR</div><div class="metric-val ${tirCls}">${tir}<span class="unit">%</span></div></div>
         <div class="metric-cell"><div class="metric-label">CV</div><div class="metric-val ${cvCls}">${cv}<span class="unit">%</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">SD</div><div class="metric-val" style="font-size:20px">${sd}<span class="unit"> mg/dL</span></div></div>
+        <div class="metric-cell" style="border-right:none">
+          <div class="metric-label">Risk Score</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+            <div style="font-size:22px;font-weight:700;color:${riskCol};line-height:1">${riskScore}<span style="font-size:10px;color:var(--text3);font-weight:400">/100</span></div>
+            <div style="font-size:9px;color:${riskCol};font-weight:600;letter-spacing:.04em;text-transform:uppercase">${riskLabel}</div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="metrics-section" style="flex:2">
@@ -618,18 +650,19 @@ function renderMetrics(cgm,boluses,basals){
           <span style="color:var(--purple)">kg:</span>
           <input type="text" inputmode="decimal" id="weight-input" value="${WEIGHT_KG}"
             onchange="updateWeight(this.value)" onblur="updateWeight(this.value)"
-            style="width:52px;background:rgba(167,139,250,0.12);border:1.5px solid rgba(167,139,250,0.5);border-radius:12px;color:var(--purple);font-size:11px;font-weight:700;text-align:center;outline:none;padding:3px 6px;-moz-appearance:textfield;"/>
-
+            style="width:52px;background:rgba(167,139,250,0.12);border:1.5px solid rgba(167,139,250,0.5);border-radius:12px;color:var(--purple);font-size:11px;font-weight:700;text-align:center;outline:none;padding:3px 6px;"/>
         </span>
       </div>
       <div class="metrics-row">
         <div class="metric-cell"><div class="metric-label">Avg TDD <span class="${tddCls}">${tddArrow}</span></div><div class="metric-val" style="font-size:20px">${tdd}<span class="unit"> u</span></div></div>
         <div class="metric-cell"><div class="metric-label">TDD/kg</div><div class="metric-val" style="font-size:20px">${tddKg}<span class="unit"> u/kg</span></div></div>
-        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:20px" style="font-size:22px;font-weight:700"><span style="color:var(--blue)">${pBolus}%</span><span style="color:var(--text3);font-size:14px"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
+        <div class="metric-cell" style="border-right:none"><div class="metric-label">Bolus/Basal</div><div class="metric-val" style="font-size:20px"><span style="color:var(--blue)">${pBolus}%</span><span style="color:var(--text3);font-size:14px"> / </span><span style="color:var(--purple)">${pBasal}%</span></div></div>
       </div>
     </div>
   `;
 }
+
+
 
 
 
@@ -1564,9 +1597,26 @@ function renderTDDChart(boluses,basals){
     });
     ctx.restore();
   }};
+  // Rolling 14-day GMI per day
+  const gmiByDay={};
+  const cgmByDay={};
+  filteredCGM.forEach(d=>{const k=dayKey(d.t);cgmByDay[k]=cgmByDay[k]||[];cgmByDay[k].push(d.v);});
+  labels.forEach((lbl,i)=>{
+    const window14=labels.slice(Math.max(0,i-13),i+1);
+    const vals14=window14.flatMap(k=>cgmByDay[k]||[]);
+    if(vals14.length>=50){
+      const a14=vals14.reduce((a,b)=>a+b,0)/vals14.length;
+      gmiByDay[lbl]=Math.round((3.31+0.02392*a14)*100)/100;
+    } else gmiByDay[lbl]=null;
+  });
+  const gmiData=labels.map(k=>gmiByDay[k]);
+
   const datasets=[
     {label:'Bolus',data:bolusData,backgroundColor:'rgba(77,159,255,0.8)',borderRadius:3,stack:'tdd'},
-    {label:'Basal',data:basalData,backgroundColor:'rgba(167,139,250,0.8)',borderRadius:3,stack:'tdd'}
+    {label:'Basal',data:basalData,backgroundColor:'rgba(167,139,250,0.8)',borderRadius:3,stack:'tdd'},
+    {label:'GMI 14d',data:gmiData,type:'line',borderColor:'rgba(255,179,71,0.9)',borderWidth:2,
+      borderDash:[5,3],pointRadius:0,tension:0.4,fill:false,stack:undefined,yAxisID:'yGMI',
+      spanGaps:true,datalabels:{display:false}}
   ];
   if(showTrend&&totalData.length>2){
     const n=totalData.length,xM=(n-1)/2,yM=totalData.reduce((a,b)=>a+b,0)/n;
@@ -1580,7 +1630,7 @@ function renderTDDChart(boluses,basals){
       plugins:{legend:{display:false},
         datalabels:{display:ctx=>ctx.datasetIndex<2,anchor:'center',align:'center',color:'rgba(255,255,255,0.9)',font:{size:10,weight:'600'},formatter:(v)=>{if(v<1.5)return'';return v+'u';}},
         tooltip:{callbacks:{footer:items=>{const tot=Math.round(items.reduce((s,i)=>s+i.parsed.y,0)*10)/10;const bp=tot>0?Math.round((items.find(i=>i.dataset.label==='Bolus')?.parsed.y||0)/tot*100):0;return`TDD: ${tot}u · Bolus ${bp}% · Basal ${100-bp}%`;}}}},
-      scales:{x:{ticks:{maxTicksLimit:14,color:'#505058',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#505058',font:{size:10}},grid:{color:grid},stacked:true}},
+      scales:{x:{ticks:{maxTicksLimit:14,color:'#505058',font:{size:10}},grid:{display:false},stacked:true},y:{ticks:{color:'#505058',font:{size:10}},grid:{color:grid},stacked:true},yGMI:{position:'right',min:5,max:9,ticks:{color:'rgba(255,179,71,0.7)',font:{size:9},callback:v=>v.toFixed(1)+'%'},grid:{display:false}}},
       layout:{padding:{top:24}}}
   });
 }
@@ -1968,141 +2018,107 @@ function renderSensitivityChart(boluses,basals){
   boluses.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].bolus+=b.units;});
   basals.forEach(b=>{const k=dayKey(b.t);days[k]=days[k]||{bolus:0,basal:0};days[k].basal+=b.delivered;});
   const labels=Object.keys(days).sort((a,b)=>new Date(a)-new Date(b));
-  const tddKgData=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*1000)/1000);
+  const tddKg=labels.map(k=>Math.round((days[k].bolus+days[k].basal)/WEIGHT_KG*1000)/1000);
 
   if(labels.length<=1&&wrap){
-    const val=tddKgData[0]||0;
+    const val=tddKg[0]||0;
     const col=val<=0.4?'#00d4a0':val<=0.6?'#ffb347':'#ff4d6d';
-    wrap.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px">
-      <div style="font-size:52px;font-weight:700;color:${col};letter-spacing:-2px">${val.toFixed(2)}</div>
-      <div style="font-size:13px;color:var(--text3)">u/kg today</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Select a wider range to see the trend</div>
-    </div>`;
+    const zone=val<=0.4?'Low demand':val<=0.6?'Typical':'High demand';
+    wrap.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;gap:24px">'
+      +'<div style="text-align:center"><div style="font-size:56px;font-weight:700;color:'+col+';letter-spacing:-2px;line-height:1">'+val.toFixed(2)+'</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:4px">u/kg today</div></div>'
+      +'<div style="background:var(--surface2);border-radius:10px;padding:12px 16px">'
+      +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Zone</div>'
+      +'<div style="font-size:16px;font-weight:700;color:'+col+'">'+zone+'</div>'
+      +'<div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">≤0.4 low · 0.4–0.6 typical<br>>0.6 high demand</div>'
+      +'</div></div>';
     return;
   }
   if(wrap&&!wrap.querySelector('canvas')){
-    wrap.innerHTML='<canvas id="sensitivityChart" role="img" aria-label="TDD/kg trend" style="width:100%;height:100%"></canvas>';
+    wrap.innerHTML='<canvas id="sensitivityChart" style="width:100%;height:100%"></canvas>';
   }
 
-  const rolling7=tddKgData.map((_,i)=>{
-    const w=tddKgData.slice(Math.max(0,i-29),i+1);
+  const roll30=tddKg.map((_,i)=>{
+    const w=tddKg.slice(Math.max(0,i-29),i+1);
     return Math.round(w.reduce((a,b)=>a+b,0)/w.length*100)/100;
   });
 
-  const allVals=[...tddKgData].filter(Boolean);
-  const yMin=Math.max(0,Math.min(...allVals)-0.05);
-  const yMax=Math.max(...allVals)+0.07;
+  const all=[...tddKg].filter(Boolean);
+  const yMin=Math.max(0,Math.min(...all)-0.05);
+  const yMax=Math.max(...all)+0.07;
   const grid='rgba(255,255,255,0.05)';
+  const ptColors=tddKg.map(v=>v<=0.4?'rgba(0,212,160,0.85)':v<=0.6?'rgba(255,179,71,0.85)':'rgba(255,77,109,0.85)');
 
-  // Color-zone background plugin
-  const zonePlugin={
-    id:'zones',
-    beforeDraw(chart){
-      const{ctx,chartArea:{left,right,top,bottom},scales:{y}}=chart;
-      ctx.save();
-      [{min:0,max:0.4,c:'rgba(0,212,160,0.06)'},{min:0.4,max:0.6,c:'rgba(255,179,71,0.06)'},{min:0.6,max:99,c:'rgba(255,77,109,0.06)'}]
-      .forEach(z=>{
-        const yT=Math.max(top,y.getPixelForValue(z.max)),yB=Math.min(bottom,y.getPixelForValue(z.min));
-        if(yB>yT){ctx.fillStyle=z.c;ctx.fillRect(left,yT,right-left,yB-yT);}
-      });
-      [0.4,0.6].forEach(v=>{
-        const py=y.getPixelForValue(v);
-        if(py<top||py>bottom)return;
-        ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
-        ctx.beginPath();ctx.moveTo(left,py);ctx.lineTo(right,py);ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle='rgba(180,175,200,0.4)';ctx.font='500 9px -apple-system,sans-serif';
-        ctx.textAlign='right';ctx.fillText(v.toFixed(1),left-4,py+3);
-      });
-      ctx.restore();
-    }
-  };
+  const zonePlugin={id:'sz',beforeDraw(chart){
+    const{ctx,chartArea:{left,right,top,bottom},scales:{y}}=chart;
+    ctx.save();
+    [{max:0.4,c:'rgba(0,212,160,0.05)'},{min:0.4,max:0.6,c:'rgba(255,179,71,0.05)'},{min:0.6,max:99,c:'rgba(255,77,109,0.05)'}]
+    .forEach(z=>{
+      const yT=Math.max(top,y.getPixelForValue(z.max||99));
+      const yB=Math.min(bottom,y.getPixelForValue(z.min||0));
+      if(yB>yT){ctx.fillStyle=z.c;ctx.fillRect(left,yT,right-left,yB-yT);}
+    });
+    [0.4,0.6].forEach(v=>{
+      const py=y.getPixelForValue(v);if(py<top||py>bottom)return;
+      ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(left,py);ctx.lineTo(right,py);ctx.stroke();ctx.setLineDash([]);
+    });
+    ctx.restore();
+  }};
 
-  // Crosshair plugin for sensitivity chart
-  const crossPlugin={
-    id:'sensCross',
-    afterDraw(chart){
-      const active=chart.tooltip?._active?.[0];
-      if(!active)return;
-      const{ctx,chartArea:{top,bottom}}=chart;
-      const cx=active.element.x,cy=active.element.y;
-      ctx.save();
-      ctx.strokeStyle='rgba(255,255,255,0.18)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
-      ctx.beginPath();ctx.moveTo(cx,top);ctx.lineTo(cx,bottom);ctx.stroke();
-      ctx.setLineDash([]);
-      // Dot on the 7d line at the same x
-      const idx=active.index;
-      const r7=rolling7[idx];
-      if(r7!=null){
-        const r7Meta=chart.getDatasetMeta(1);
-        const r7Pt=r7Meta?.data?.[idx];
-        if(r7Pt){
-          ctx.fillStyle='#00d4a0';ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
-          ctx.beginPath();ctx.arc(r7Pt.x,r7Pt.y,4,0,Math.PI*2);ctx.fill();ctx.stroke();
-        }
-      }
-      // Dot on the daily value
-      ctx.fillStyle=tddKgData[idx]<=0.4?'#00d4a0':tddKgData[idx]<=0.6?'#ffb347':'#ff4d6d';
-      ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.restore();
-    }
-  };
-
-  // Single line dataset for daily — colored point backgrounds per value
-  const ptColors=tddKgData.map(v=>v<=0.4?'rgba(0,212,160,0.85)':v<=0.6?'rgba(255,179,71,0.85)':'rgba(255,77,109,0.85)');
-  const ptBorder=tddKgData.map(v=>v<=0.4?'rgba(0,212,160,0.4)':v<=0.6?'rgba(255,179,71,0.4)':'rgba(255,77,109,0.4)');
+  const crossPlugin={id:'sc',afterDraw(chart){
+    const a=chart.tooltip?._active?.[0];if(!a)return;
+    const{ctx,chartArea:{top,bottom}}=chart;
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(a.element.x,top);ctx.lineTo(a.element.x,bottom);ctx.stroke();
+    ctx.setLineDash([]);
+    // Dot on rolling line
+    const r30m=chart.getDatasetMeta(1)?.data?.[a.index];
+    if(r30m){ctx.fillStyle='#00d4a0';ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(r30m.x,r30m.y,4,0,Math.PI*2);ctx.fill();ctx.stroke();}
+    ctx.restore();
+  }};
 
   sensitivityChart=new Chart(document.getElementById('sensitivityChart'),{
     type:'line',
     data:{labels,datasets:[
-      // Daily — line connecting dots, dots colored by zone
-      {label:'Daily',data:tddKgData,
-        borderColor:'rgba(180,175,200,0.2)',borderWidth:1,
-        pointRadius:5,pointHoverRadius:7,
-        pointBackgroundColor:ptColors,
-        pointBorderColor:ptBorder,pointBorderWidth:1.5,
+      {label:'Daily',data:tddKg,borderColor:'rgba(200,195,215,0.15)',borderWidth:1,
+        pointRadius:5,pointHoverRadius:7,pointBackgroundColor:ptColors,
+        pointBorderColor:'rgba(0,0,0,0.2)',pointBorderWidth:1,
         tension:0,fill:false,datalabels:{display:false}},
-      // 7d rolling avg — smooth line, no dots until hover
-      {label:'30d avg',data:rolling7,
-        borderColor:'#00d4a0',borderWidth:2.5,
-        pointRadius:0,pointHoverRadius:0,
-        tension:0.4,fill:false,datalabels:{display:false}},
+      {label:'30d avg',data:roll30,borderColor:'#00d4a0',borderWidth:2.5,
+        pointRadius:0,tension:0.4,fill:false,datalabels:{display:false}},
     ]},
     plugins:[zonePlugin,crossPlugin],
     options:{responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{display:false},datalabels:{display:false},
-        tooltip:{
-          enabled:false,
-          external:ctx=>{
-            const{chart,tooltip}=ctx;
-            let el=document.getElementById('sens-tooltip');
-            if(!el){el=document.createElement('div');el.id='sens-tooltip';
-              el.style.cssText='position:fixed;background:rgba(12,12,20,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:9999;display:none;min-width:140px;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
-              document.body.appendChild(el);}
-            if(tooltip.opacity===0){el.style.display='none';return;}
-            const i=tooltip.dataPoints?.[0]?.dataIndex;
-            if(i==null){el.style.display='none';return;}
-            const val=tddKgData[i],avg=rolling7[i];
-            if(val==null){el.style.display='none';return;}
-            const col=val<=0.4?'#00d4a0':val<=0.6?'#ffb347':'#ff4d6d';
-            const zone=val<=0.4?'Low demand':val<=0.6?'Typical range':'High demand';
-            let html=`<div style="color:rgba(200,195,215,0.7);font-size:11px;margin-bottom:6px">${labels[i]}</div>`;
-            html+=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block"></span><span style="color:${col};font-weight:700">${val.toFixed(3)}</span><span style="color:rgba(180,175,200,0.5);font-size:10px">u/kg</span></div>`;
-            html+=`<div style="font-size:10px;color:${col};padding-left:16px;margin-bottom:3px">${zone}</div>`;
-            if(avg!=null) html+=`<div style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:2px;background:#00d4a0;display:inline-block;border-radius:1px"></span><span style="color:rgba(0,212,160,0.7);font-size:10px">30d avg: ${avg.toFixed(3)} u/kg</span></div>`;
-            el.innerHTML=html;el.style.display='block';
-            const r=chart.canvas.getBoundingClientRect();
-            const cp=tooltip.caretX,cy2=tooltip.caretY;
-            const tw=el.offsetWidth+16,th=el.offsetHeight+16;
-            let lx=r.left+cp+14,ly=r.top+cy2-th/2;
-            if(lx+tw>window.innerWidth)lx=r.left+cp-tw+2;
-            if(ly<4)ly=4;
-            el.style.left=lx+'px';el.style.top=ly+'px';
-          }
-        }
+      plugins:{legend:{display:false},datalabels:{display:false},
+        tooltip:{enabled:false,external:ctx2=>{
+          const{chart,tooltip}=ctx2;
+          let el=document.getElementById('sens-tt');
+          if(!el){el=document.createElement('div');el.id='sens-tt';
+            el.style.cssText='position:fixed;background:rgba(12,12,20,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:9999;display:none;min-width:130px;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
+            document.body.appendChild(el);}
+          if(tooltip.opacity===0){el.style.display='none';return;}
+          const i=tooltip.dataPoints?.[0]?.dataIndex;if(i==null){el.style.display='none';return;}
+          const v=tddKg[i],r=roll30[i];if(v==null){el.style.display='none';return;}
+          const col=v<=0.4?'#00d4a0':v<=0.6?'#ffb347':'#ff4d6d';
+          const zone=v<=0.4?'Low demand':v<=0.6?'Typical':'High demand';
+          let html='<div style="color:rgba(200,195,215,0.7);font-size:11px;margin-bottom:6px">'+labels[i]+'</div>';
+          html+='<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span style="width:9px;height:9px;border-radius:50%;background:'+col+';display:inline-block"></span>'
+            +'<span style="color:'+col+';font-weight:700">'+v.toFixed(3)+'</span><span style="color:rgba(180,175,200,0.5);font-size:10px">u/kg</span></div>';
+          html+='<div style="font-size:10px;color:'+col+';padding-left:16px;margin-bottom:3px">'+zone+'</div>';
+          if(r!=null)html+='<div style="display:flex;align-items:center;gap:7px"><span style="width:12px;height:2px;background:#00d4a0;display:inline-block;border-radius:1px"></span>'
+            +'<span style="color:rgba(0,212,160,0.7);font-size:10px">30d avg: '+r.toFixed(3)+' u/kg</span></div>';
+          el.innerHTML=html;el.style.display='block';
+          const rct=chart.canvas.getBoundingClientRect();
+          const tw=el.offsetWidth+16,th=el.offsetHeight+16;
+          let lx=rct.left+tooltip.caretX+14,ly=rct.top+tooltip.caretY-th/2;
+          if(lx+tw>window.innerWidth)lx=rct.left+tooltip.caretX-tw+2;
+          if(ly<4)ly=4;
+          el.style.left=lx+'px';el.style.top=ly+'px';
+        }}
       },
       scales:{
         x:{ticks:{maxTicksLimit:8,color:'#505058',font:{size:10},maxRotation:0},grid:{color:grid}},
@@ -2110,97 +2126,159 @@ function renderSensitivityChart(boluses,basals){
       }}
   });
   document.getElementById('sensitivityChart')?.addEventListener('mouseleave',()=>{
-    const el=document.getElementById('sens-tooltip');if(el)el.style.display='none';
+    const el=document.getElementById('sens-tt');if(el)el.style.display='none';
   });
 }
 
-function renderInsights(cgm,boluses,basals){
-  const HIGH_TIR=tirMode==='tight'?140:HIGH;
-  const vals=cgm.map(d=>d.v);
-  const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-  const sd=Math.round(Math.sqrt(vals.map(v=>(v-avg)**2).reduce((a,b)=>a+b,0)/vals.length));
-  const cv=Math.round(sd/avg*100);
-  const tir=Math.round(vals.filter(v=>v>=LOW&&v<=HIGH_TIR).length/vals.length*100);
-  const lowL2=Math.round(vals.filter(v=>v<54).length/vals.length*100);
-  const lowL1=Math.round(vals.filter(v=>v>=54&&v<LOW).length/vals.length*100);
-  const lowPct=lowL2+lowL1;
-  const gmi=Math.round((3.31+0.02392*avg)*100)/100;
-  const totalBolus=boluses.reduce((s,b)=>s+b.units,0);
-  const totalBasal=basals.reduce((s,b)=>s+b.delivered,0);
-  const uniqueDaysI=new Set([...boluses.map(b=>dayKey(b.t)),...basals.map(b=>dayKey(b.t))]).size;
-  const tdd=Math.round((totalBolus+totalBasal)/Math.max(1,uniqueDaysI)*10)/10;
-  const tddKg=Math.round(tdd/WEIGHT_KG*100)/100;
-  const totalT=totalBolus+totalBasal;
-  const pBolus=totalT>0?Math.round(totalBolus/totalT*100):0;
-  const pBasal=100-pBolus;
-  const hours=Array.from({length:24},()=>({low:0,high:0}));
-  cgm.forEach(d=>{if(d.v<LOW) hours[d.t.getHours()].low++;if(d.v>HIGH_TIR) hours[d.t.getHours()].high++;});
-  const maxLowH=hours.map(h=>h.low).indexOf(Math.max(...hours.map(h=>h.low)));
-  const maxLowC=hours[maxLowH].low;
-  const maxHighH=hours.map(h=>h.high).indexOf(Math.max(...hours.map(h=>h.high)));
-  const maxHighC=hours[maxHighH].high;
-  const hl=h=>h===0?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
-  const overnight=cgm.filter(d=>{const h=d.t.getHours();return h>=22||h<6;});
-  const daytime=cgm.filter(d=>{const h=d.t.getHours();return h>=6&&h<22;});
-  const onTIR=overnight.length?Math.round(overnight.filter(d=>d.v>=LOW&&d.v<=HIGH_TIR).length/overnight.length*100):null;
-  const dayTIR=daytime.length?Math.round(daytime.filter(d=>d.v>=LOW&&d.v<=HIGH_TIR).length/daytime.length*100):null;
-  const dayMap={};
-  [...boluses,...basals].forEach(b=>{const k=dayKey(b.t);dayMap[k]=dayMap[k]||{bolus:0,basal:0};if(b.units) dayMap[k].bolus+=b.units;if(b.delivered) dayMap[k].basal+=b.delivered;});
-  const dailyTDDs=Object.values(dayMap).map(d=>d.bolus+d.basal);
-  let tddTrend=0;
-  if(dailyTDDs.length>=3){const mid=Math.floor(dailyTDDs.length/2);const f=dailyTDDs.slice(0,mid).reduce((a,b)=>a+b,0)/mid;const l=dailyTDDs.slice(mid).reduce((a,b)=>a+b,0)/(dailyTDDs.length-mid);tddTrend=l-f;}
-  const items=[];
-  const tirTarget=tirMode==='tight'?50:70;
-  const tirElite=tirMode==='tight'?null:85;
-  const tirSource=tirMode==='tight'?'ATTD 2023 consensus':'ADA Standards of Care 2024';
-  if(tirElite&&tir>=tirElite) items.push({key:'tir',cls:'green',icon:'✓',text:`TIR ${tir}% — above ATTD T1D target`,sub:`ATTD 2023 consensus aspirational target for T1D on closed loop is >85%. ADA 2024 minimum is >70%. Source: ${tirSource}.`});
-  else if(tir>=tirTarget) items.push({key:'tir',cls:'amber',icon:'!',text:`TIR ${tir}% — meets ADA minimum target`,sub:`ADA 2024 Standards of Care: TIR goal ≥${tirTarget}% for T1D. ATTD consensus sets aspirational target at >85% for closed-loop systems. Source: ${tirSource}.`});
-  else items.push({key:'tir',cls:'red',icon:'!',text:`TIR ${tir}% — below ADA minimum target`,sub:`ADA 2024: TIR goal ≥${tirTarget}% for T1D. Current value is below guideline minimum. Level 2 hypo (<54): ${lowL2}% · Level 1 (54–69): ${lowL1}%. Source: ${tirSource}.`});
-  if(cv<=25) items.push({key:'cv',cls:'green',icon:'✓',text:`CV ${cv}% — below ATTD target`,sub:'ATTD 2017/2023 consensus: CV ≤36% is the clinical target for acceptable glycemic variability. Values ≤25% are associated with reduced hypoglycemia risk on closed-loop systems.'});
-  else if(cv<=36) items.push({key:'cv',cls:'amber',icon:'!',text:`CV ${cv}% — within ATTD target`,sub:'ATTD consensus CV target is ≤36%. This is clinically acceptable variability. CV above 25% is associated with increased hypoglycemia risk even at good average glucose levels.'});
-  else items.push({key:'cv',cls:'red',icon:'!',text:`CV ${cv}% — above ATTD target`,sub:'ATTD consensus: CV >36% indicates excessive glycemic variability. This threshold is independently associated with increased hypoglycemia risk and reduced time in range.'});
-  if(gmi<6.5) items.push({key:'gmi',cls:'green',icon:'✓',text:`GMI ${gmi}% — strong`,sub:'GMI (Glucose Management Indicator) is estimated from CGM average glucose (Bergenstal et al., Diabetes Care 2018). ADA 2024: GMI <7% is the general T1D target. Values <6.5% reflect strong overall control.'});
-  else if(gmi<7) items.push({key:'gmi',cls:'amber',icon:'!',text:`GMI ${gmi}% — at ADA target`,sub:'ADA 2024 Standards of Care: A1C/GMI target <7% for most T1D adults. GMI is a validated CGM-derived estimate of A1C (Bergenstal et al., Diabetes Care 2018).'});
-  else items.push({key:'gmi',cls:'red',icon:'!',text:`GMI ${gmi}% — above ADA target`,sub:'ADA 2024: A1C/GMI target <7% for most T1D adults. Note: GMI may differ from lab A1C due to individual variation in red blood cell turnover (Diabetes Care 2018).'});
-  if(lowL2>=1) items.push({key:'lowL2',cls:'red',icon:'!',text:`Level 2 hypo (<54 mg/dL): ${lowL2}% of readings`,sub:'ADA 2024 / ATTD consensus: Time below 54 mg/dL (Level 2 hypoglycemia) target is <1%. This threshold is associated with severe hypoglycemia risk and impaired hypoglycemia awareness.'});
-  else if(lowPct>=4) items.push({key:'lowPct',cls:'red',icon:'!',text:`Time below range ${lowPct}% — above ADA target`,sub:`ADA 2024 / ATTD: Time below range (<70 mg/dL) target is <4% for T1D. Level 1 (54–69 mg/dL): ${lowL1}% · Level 2 (<54 mg/dL): ${lowL2}%.`});
-  else if(lowPct>=2) items.push({key:'lowPct',cls:'amber',icon:'!',text:`Time below range ${lowPct}% — monitor`,sub:`ATTD aspirational target: <2% time below range. ADA minimum target: <4%. Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%.`});
-  else items.push({key:'lowPct',cls:'green',icon:'✓',text:`Time below range ${lowPct}% — within ATTD target`,sub:`ATTD consensus: <2% time below range (<70 mg/dL). Level 1 (54–69): ${lowL1}% · Level 2 (<54): ${lowL2}%. Both within ADA/ATTD targets.`});
-  if(maxLowC>=3) items.push({key:'lowPattern',cls:'amber',icon:'!',text:`Low pattern at ${hl(maxLowH)} — ${maxLowC} events`,sub:`${maxLowC} readings below 70 mg/dL concentrated at this hour across the selected period. ATTD guidance: recurring time below range at a specific hour may reflect systematic insulin delivery patterns.`});
-  if(maxHighC>=5) items.push({key:'highPattern',cls:'amber',icon:'!',text:`High pattern at ${hl(maxHighH)} — ${maxHighC} events`,sub:`${maxHighC} readings above ${HIGH_TIR} mg/dL concentrated at this hour. ATTD: time above range target is <25% (>180 mg/dL) or <10% (>250 mg/dL).`});
-  if(onTIR!==null&&dayTIR!==null){
-    if(onTIR>=85&&dayTIR>=85) items.push({key:'overnight',cls:'green',icon:'✓',text:`Overnight TIR ${onTIR}% · Daytime TIR ${dayTIR}%`,sub:'Both overnight and daytime TIR exceed the ATTD 85% aspirational threshold. ATTD 2023: consistent TIR across all periods is a marker of effective closed-loop performance.'});
-    else if(onTIR<dayTIR-15) items.push({key:'overnight',cls:'amber',icon:'!',text:`Overnight TIR (${onTIR}%) lags daytime (${dayTIR}%)`,sub:'Overnight TIR is >15 percentage points below daytime. ATTD notes that nocturnal hypoglycemia carries elevated clinical risk due to impaired hypoglycemia awareness during sleep.'});
-    else if(dayTIR<onTIR-15) items.push({key:'overnight',cls:'amber',icon:'!',text:`Daytime TIR (${dayTIR}%) lags overnight (${onTIR}%)`,sub:'Daytime TIR is >15 points below overnight. This pattern is consistent with postprandial glycemic excursions, a common contributor to reduced TIR in closed-loop T1D management.'});
+// ── ACTIVITY IMPACT ──────────────────────────────────────────────────────────
+function renderActivityImpact(cgm, exercise) {
+  const el = document.getElementById('activity-display');
+  if(!el) return;
+  if(!exercise||!exercise.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No exercise data in selected range.<br>Add exercise entries to your Tidepool logs.</div>';
+    return;
   }
-  if(pBolus>60) items.push({key:'split',cls:'amber',icon:'!',text:`Bolus-heavy split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Published AID system data (Breton et al., NEJM 2021) reports typical bolus:basal ratios of approximately 45–55% bolus. Higher bolus proportion may reflect frequent corrections or higher carbohydrate intake.'});
-  else if(pBasal>60) items.push({key:'split',cls:'amber',icon:'!',text:`Basal-heavy split: ${pBasal}% basal / ${pBolus}% bolus`,sub:'Automated insulin delivery systems typically deliver 45–55% as bolus insulin. Higher automated basal proportion may reflect sustained hyperglycemia correction or lower meal-time insulin requirements.'});
-  else items.push({key:'split',cls:'green',icon:'✓',text:`Balanced split: ${pBolus}% bolus / ${pBasal}% basal`,sub:'Bolus:basal ratio is within the typical range reported in closed-loop clinical trials (45–55% bolus). This pattern is consistent with balanced meal and correction dosing (Breton et al., NEJM 2021).'});
-  if(tddKg<=0.4) items.push({key:'tddKg',cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — low-normal range`,sub:'Published T1D literature reports typical TDD of 0.4–0.7 u/kg/day. Values below 0.4 suggest high insulin sensitivity or lower carbohydrate intake relative to body weight.'});
-  else if(tddKg<=0.6) items.push({key:'tddKg',cls:'green',icon:'✓',text:`TDD/kg ${tddKg} u/kg — typical range`,sub:'Within the typical T1D TDD range of 0.4–0.7 u/kg/day. TDD/kg is a useful longitudinal marker for tracking insulin requirement trends over time.'});
-  else if(tddKg<=0.7) items.push({key:'tddKg',cls:'amber',icon:'!',text:`TDD/kg ${tddKg} u/kg — upper typical range`,sub:'Approaching the upper end of the typical T1D TDD range (0.4–0.7 u/kg/day). Sustained upward trend may reflect changes in carbohydrate intake, activity level, or insulin sensitivity.'});
-  else items.push({key:'tddKg',cls:'red',icon:'!',text:`TDD/kg ${tddKg} u/kg — above typical range`,sub:'Above the typical T1D TDD range of 0.4–0.7 u/kg/day. Persistent elevation warrants monitoring alongside insulin resistance proxy markers (TG:HDL ratio, eGDR).'});
-  if(tddTrend>2) items.push({key:'tddTrend',cls:'amber',icon:'!',text:`TDD trending up ~${Math.round(tddTrend*10)/10}u over period`,sub:'Total daily insulin has increased across this period. Potential contributors include higher carbohydrate intake, reduced physical activity, hormonal variation, or changes in insulin sensitivity.'});
-  else if(tddTrend<-2) items.push({key:'tddTrend',cls:'green',icon:'✓',text:`TDD trending down ~${Math.round(Math.abs(tddTrend)*10)/10}u over period`,sub:'Total daily insulin has decreased across this period, consistent with improving insulin sensitivity, reduced carbohydrate intake, or increased physical activity.'});
-  const green=items.filter(i=>i.cls==='green').length;
-  const amber=items.filter(i=>i.cls==='amber').length;
-  const red=items.filter(i=>i.cls==='red').length;
-  // Distribute insights to per-tile divs
-  function tileInsight(elId, itemKeys){
-    const el=document.getElementById(elId);
-    if(!el) return;
-    const relevant=items.filter(i=>itemKeys.includes(i.key));
-    if(!relevant.length){el.innerHTML='';return;}
-    el.innerHTML=relevant.map(i=>`
-      <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);border-left:2px solid ${i.cls==='green'?'var(--accent)':i.cls==='amber'?'var(--amber)':'var(--red)'};background:${i.cls==='green'?'var(--accent-dim)':i.cls==='amber'?'var(--amber-dim)':'var(--red-dim)'};margin-top:4px">
-        <span style="font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;color:${i.cls==='green'?'var(--accent)':i.cls==='amber'?'var(--amber)':'var(--red)'}">${i.icon}</span>
-        <div><div style="font-size:12px;font-weight:600;color:var(--text)">${i.text}</div><div style="font-size:11px;color:var(--text2);margin-top:2px;line-height:1.5">${i.sub}</div></div>
-      </div>`).join('');
+  const HIGH_TIR = tirMode==='tight'?140:HIGH;
+  // Get unique days with/without exercise
+  const exDays = new Set(exercise.map(e=>e.t.toDateString()));
+  const allDays = new Set(cgm.map(d=>d.t.toDateString()));
+  const nonExDays = [...allDays].filter(d=>!exDays.has(d));
+
+  function statsForWindow(dayStr, hoursAfter) {
+    const dayStart = new Date(dayStr+' 00:00:00');
+    const windowEnd = new Date(dayStart.getTime() + (24+hoursAfter)*3600000);
+    return cgm.filter(d=>d.t>=dayStart&&d.t<windowEnd).map(d=>d.v);
   }
-  // Insights disabled — clear all tile insight divs
-  document.querySelectorAll('[id^="insight-"]').forEach(el=>el.innerHTML='');
+
+  // During exercise events — glucose during the exercise window
+  const duringEx = exercise.flatMap(e=>
+    cgm.filter(d=>Math.abs(d.t-e.t)<e.dur*60000*1.5&&d.t>=e.t).map(d=>d.v)
+  );
+  // 18h post-exercise
+  const postExVals = [...exDays].flatMap(d=>statsForWindow(d, 18));
+  const nonExVals  = nonExDays.flatMap(d=>statsForWindow(d, 18));
+
+  function stats(arr) {
+    if(!arr.length) return null;
+    const avg = Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+    const tir = Math.round(arr.filter(v=>v>=LOW&&v<=HIGH_TIR).length/arr.length*100);
+    const low = Math.round(arr.filter(v=>v<LOW).length/arr.length*100);
+    return {avg, tir, low, n:arr.length};
+  }
+
+  const ex  = stats(postExVals);
+  const noEx= stats(nonExVals);
+  const dur = stats(duringEx);
+  if(!ex||!noEx){el.innerHTML='<div style="font-size:12px;color:var(--text3)">Not enough data to compare.</div>';return;}
+
+  const avgDelta = ex.avg - noEx.avg;
+  const tirDelta = ex.tir - noEx.tir;
+  const deltaCol = avgDelta < -5 ? '#00d4a0' : avgDelta > 5 ? '#ff4d6d' : 'var(--text)';
+  const tirCol   = tirDelta > 5 ? '#00d4a0' : tirDelta < -5 ? '#ff4d6d' : 'var(--text)';
+
+  function col2(label, val, unit, color) {
+    return '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">'
+      +'<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">'+label+'</div>'
+      +'<div style="font-size:20px;font-weight:700;color:'+(color||'var(--text)')+';line-height:1.1">'+val+'<span style="font-size:9px;color:var(--text3);margin-left:2px">'+unit+'</span></div></div>';
+  }
+
+  const summaryColor = avgDelta < -5 ? '#00d4a0' : avgDelta > 5 ? '#ff4d6d' : '#ffb347';
+  const summaryText  = avgDelta < -5 ? 'Exercise lowers avg BG by '+Math.abs(avgDelta)+' mg/dL over 18h post-activity'
+    : avgDelta > 5 ? 'Exercise raises avg BG by '+avgDelta+' mg/dL — consider adjustments'
+    : 'Exercise has minimal impact on avg BG in this range';
+
+  el.innerHTML = '<div style="font-size:11px;color:'+summaryColor+';margin-bottom:10px;font-weight:600">'+summaryText+'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +'<div style="background:rgba(103,232,249,0.07);border:1px solid rgba(103,232,249,0.2);border-radius:10px;padding:10px">'
+    +'<div style="font-size:10px;color:#67e8f9;font-weight:700;margin-bottom:8px">🏃 EXERCISE DAYS ('+exDays.size+'d)</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    +col2('Post-18h avg',ex.avg,'mg',deltaCol)+col2('Post-18h TIR',ex.tir,'%',ex.tir>=85?'#00d4a0':ex.tir>=70?'#ffb347':'#ff4d6d')
+    +col2('Low%',ex.low,'%',ex.low<4?'#00d4a0':ex.low<8?'#ffb347':'#ff4d6d')+'</div></div>'
+    +'<div style="background:rgba(200,195,215,0.04);border:1px solid rgba(200,195,215,0.1);border-radius:10px;padding:10px">'
+    +'<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:8px">REST DAYS ('+nonExDays.length+'d)</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    +col2('Avg BG',noEx.avg,'mg','var(--text)')+col2('TIR',noEx.tir,'%',noEx.tir>=85?'#00d4a0':noEx.tir>=70?'#ffb347':'#ff4d6d')
+    +col2('Low%',noEx.low,'%',noEx.low<4?'#00d4a0':noEx.low<8?'#ffb347':'#ff4d6d')+'</div></div></div>'
+    +(dur&&dur.n>0?'<div style="font-size:10px;color:var(--text3)">During exercise: avg '+dur.avg+' mg/dL · '+dur.tir+'% TIR · '+dur.low+'% below 70</div>':'');
 }
 
+// ── LOOP SUSPENSION AUDIT ─────────────────────────────────────────────────────
+function renderSuspensionAudit(cgm, basals) {
+  const el = document.getElementById('suspension-display');
+  if(!el) return;
+  if(!basals||!basals.length){el.innerHTML='<div style="font-size:12px;color:var(--text3)">No basal data.</div>';return;}
+
+  const HIGH_TIR = tirMode==='tight'?140:HIGH;
+  const bs = [...basals].sort((a,b)=>a.t-b.t);
+
+  // Find suspension events: delivered < 5% of expected for segment
+  const suspEvents = [];
+  bs.forEach((b,i)=>{
+    const segEnd = i<bs.length-1?bs[i+1].t.getTime():b.t.getTime()+30*60000;
+    const hrs = (segEnd-b.t.getTime())/3600000;
+    const delRate = hrs>0?(b.delivered||0)/hrs:0;
+    if(delRate<0.05&&(b.rate||0)>0.05){
+      suspEvents.push({t:b.t,end:new Date(segEnd),hrs,rate:b.rate,delRate});
+    }
+  });
+
+  if(!suspEvents.length){
+    el.innerHTML='<div style="font-size:12px;color:#00d4a0;padding:8px 0">✓ No basal suspensions detected in this range.</div>';
+    return;
+  }
+
+  // Group by day
+  const byDay = {};
+  suspEvents.forEach(ev=>{
+    const k=dayKey(ev.t);
+    byDay[k]=byDay[k]||{events:[],totalHrs:0};
+    byDay[k].events.push(ev);
+    byDay[k].totalHrs+=ev.hrs;
+  });
+
+  // For each suspension, get glucose during that window
+  function glucDuring(start,end){
+    return cgm.filter(d=>d.t>=start&&d.t<=end).map(d=>d.v);
+  }
+
+  let html='<div style="display:flex;flex-direction:column;gap:8px">';
+  Object.entries(byDay).sort((a,b)=>new Date(a[0])-new Date(b[0])).forEach(([day,{events,totalHrs}])=>{
+    const evDetails = events.map(ev=>{
+      const g=glucDuring(ev.t,ev.end);
+      const avgG=g.length?Math.round(g.reduce((a,b)=>a+b,0)/g.length):null;
+      const lowDuring=g.filter(v=>v<LOW).length;
+      const inRangeDuring=g.length?Math.round(g.filter(v=>v>=LOW&&v<=HIGH_TIR).length/g.length*100):null;
+      const likely=ev.hrs<0.25?'Auto (low predict)':ev.hrs<1?'Likely manual':ev.hrs>=1?'Extended (exercise?)':'Unknown';
+      return {ev,avgG,lowDuring,inRangeDuring,likely};
+    });
+
+    const totalMins=Math.round(totalHrs*60);
+    const anyLow=evDetails.some(e=>e.lowDuring>0);
+    const borderCol=anyLow?'rgba(255,77,109,0.4)':'rgba(255,179,71,0.25)';
+    const bgCol=anyLow?'rgba(255,77,109,0.05)':'rgba(255,255,255,0.02)';
+
+    html+='<div style="border:1px solid '+borderCol+';background:'+bgCol+';border-radius:8px;padding:10px">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    html+='<span style="font-size:12px;font-weight:700;color:var(--text)">'+day+'</span>';
+    html+='<span style="font-size:11px;color:var(--text3)">'+events.length+' event'+(events.length>1?'s':'')+' · '+totalMins+'min total</span></div>';
+    evDetails.forEach(({ev,avgG,lowDuring,inRangeDuring,likely})=>{
+      const tStr=ev.t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const durMin=Math.round(ev.hrs*60);
+      const gcol=avgG?(avgG<LOW?'#ff4d6d':avgG>HIGH_TIR?'#ffb347':'#00d4a0'):'var(--text3)';
+      html+='<div style="display:flex;align-items:center;gap:10px;font-size:11px;padding:4px 0;border-top:1px solid rgba(255,255,255,0.05)">';
+      html+='<span style="color:var(--text3);min-width:50px">'+tStr+'</span>';
+      html+='<span style="color:var(--text2)">'+durMin+'min</span>';
+      html+='<span style="color:rgba(200,195,215,0.5)">'+likely+'</span>';
+      if(avgG) html+='<span style="color:'+gcol+';margin-left:auto">avg '+avgG+' mg/dL</span>';
+      if(lowDuring>0) html+='<span style="color:#ff4d6d;font-weight:600">⚠ '+lowDuring+' low</span>';
+      html+='</div>';
+    });
+    html+='</div>';
+  });
+  html+='</div>';
+  html+='<div style="font-size:10px;color:var(--text3);margin-top:8px">Suspended = delivered &lt;5% of scheduled rate · Short (&lt;15min) = likely Loop auto-suspend · Long = manual or exercise</div>';
+  el.innerHTML=html;
+}
 
 // ── MEAL RESPONSE ────────────────────────────────────────────────────────────
 let postmealCurveChart = null;
@@ -2332,17 +2410,18 @@ function renderPostMealCurve(cgm, meals, boluses) {
   const riseCol=delta?(delta>60?'#ff4d6d':delta>30?'#ffb347':'#00d4a0'):'var(--text)';
   const tirCol=pmTIR!=null?(pmTIR>=85?'#00d4a0':pmTIR>=70?'#ffb347':'#ff4d6d'):'var(--text)';
 
-  let cards=sc('Meals',mealCount,'','var(--text)');
-  if(baseline)      cards+=sc('Pre-meal',baseline,'mg','var(--text)');
-  if(postPeak)      cards+=sc('Peak',postPeak,'mg',peakCol);
-  if(delta)         cards+=sc('Rise','+'+delta,'mg',riseCol);
-  if(peakMin!=null) cards+=sc('Peak at','+'+peakMin,'m','var(--text)');
-  if(returnMin)     cards+=sc('Returns','+'+returnMin,'m','var(--text)');
-  if(pmTIR!=null)   cards+=sc('Post-meal TIR',pmTIR,'%',tirCol);
-  if(avgMealBolus)  cards+=sc('Avg bolus',avgMealBolus,'u','#60a5fa');
-  if(avgICR)        cards+=sc('Est. ICR','1:'+avgICR,'g/u','var(--text)');
+  // Simple 4-number summary row
+  const items2 = [];
+  if(mealCount)   items2.push({l:'Meals',    v:mealCount,      u:'',   c:'var(--text)'});
+  if(delta)       items2.push({l:'Rise',      v:'+'+delta,      u:'mg', c:riseCol});
+  if(peakMin!=null)items2.push({l:'Peak at',  v:'+'+peakMin,    u:'m',  c:'var(--text)'});
+  if(pmTIR!=null) items2.push({l:'Post TIR', v:pmTIR,          u:'%',  c:tirCol});
+  if(avgMealBolus)items2.push({l:'Bolus',    v:avgMealBolus,   u:'u',  c:'#60a5fa'});
 
-  statsEl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:6px">'+cards+'</div>';
+  statsEl.innerHTML='<div style="display:flex;gap:16px;flex-wrap:wrap">'
+    +items2.map(it=>'<div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">'+it.l+'</div>'
+      +'<div style="font-size:18px;font-weight:700;color:'+it.c+'">'+it.v+'<span style="font-size:9px;color:var(--text3);margin-left:2px">'+it.u+'</span></div></div>').join('')
+    +'</div>';
 }
 
 
